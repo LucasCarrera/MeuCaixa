@@ -135,7 +135,11 @@
 
         <div id="sugestao-cat" class="sugestao escondido"></div>
 
-        <div class="linha-2">
+        <div class="linha-3">
+          <div>
+            <label class="rotulo-campo">Conta</label>
+            <select id="l-conta" class="entrada-texto"></select>
+          </div>
           <div>
             <label class="rotulo-campo">Categoria</label>
             <select id="l-categoria" class="entrada-texto"></select>
@@ -210,10 +214,6 @@
         <h3>Segurança do seu caixa</h3>
         <div class="linha-2">
           <label class="bloco-ajuste">
-            <span>Dinheiro inicial</span>
-            <div class="campo-moeda pequeno"><span>R$</span><input id="a-saldo" type="text" inputmode="decimal"></div>
-          </label>
-          <label class="bloco-ajuste">
             <span>Reserva mínima (piso)</span>
             <div class="campo-moeda pequeno"><span>R$</span><input id="a-piso" type="text" inputmode="decimal"></div>
           </label>
@@ -223,6 +223,16 @@
           </label>
         </div>
         <button class="btn-medio" onclick="salvarAjustesGerais()">Salvar</button>
+      </div>
+
+      <div class="card">
+        <h3>Contas</h3>
+        <p class="sub">Onde seu dinheiro está guardado: carteira, conta corrente, poupança, conta digital...</p>
+        <div id="lista-contas"></div>
+        <div style="display:flex; gap:10px; margin-top:12px; flex-wrap:wrap">
+          <button class="btn-medio" style="margin:0" onclick="abrirModalConta()">➕ Nova conta</button>
+          <button class="btn-medio" style="margin:0" onclick="abrirModalTransferencia()">↔️ Transferir entre contas</button>
+        </div>
       </div>
 
       <div class="card">
@@ -258,6 +268,44 @@
     <h2>🔔 Avisos</h2>
     <div id="lista-alertas"></div>
     <button class="btn-medio" onclick="fecharAlertas()">Entendi</button>
+  </div>
+</div>
+
+<!-- Modal de conta (criar/editar) -->
+<div id="modal-conta" class="modal-fundo escondido" onclick="if(event.target===this)fecharModalConta()">
+  <div class="modal">
+    <h2 id="mc-titulo">Nova conta</h2>
+    <input type="hidden" id="mc-id">
+    <label class="rotulo-campo">Nome</label>
+    <input id="mc-nome" class="entrada-texto" placeholder="Ex: Conta corrente, Carteira...">
+    <label class="rotulo-campo">Tipo</label>
+    <select id="mc-tipo" class="entrada-texto">
+      <option value="corrente">Conta corrente</option>
+      <option value="poupanca">Poupança</option>
+      <option value="dinheiro">Dinheiro</option>
+      <option value="digital">Conta digital</option>
+    </select>
+    <label class="rotulo-campo">Saldo inicial</label>
+    <div class="campo-moeda pequeno"><span>R$</span>
+      <input id="mc-saldo" type="text" inputmode="decimal" placeholder="0,00"></div>
+    <button class="btn-grande" onclick="salvarContaModal()">Salvar</button>
+  </div>
+</div>
+
+<!-- Modal de transferência entre contas -->
+<div id="modal-transferencia" class="modal-fundo escondido" onclick="if(event.target===this)fecharModalTransferencia()">
+  <div class="modal">
+    <h2>↔️ Transferir entre contas</h2>
+    <label class="rotulo-campo">De</label>
+    <select id="tr-origem" class="entrada-texto"></select>
+    <label class="rotulo-campo">Para</label>
+    <select id="tr-destino" class="entrada-texto"></select>
+    <label class="rotulo-campo">Valor</label>
+    <div class="campo-moeda pequeno"><span>R$</span>
+      <input id="tr-valor" type="text" inputmode="decimal" placeholder="0,00"></div>
+    <label class="rotulo-campo">Data</label>
+    <input id="tr-data" type="date" class="entrada-texto">
+    <button class="btn-grande" onclick="confirmarTransferencia()">Transferir</button>
   </div>
 </div>
 

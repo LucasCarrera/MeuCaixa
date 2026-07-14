@@ -37,6 +37,16 @@ CREATE TABLE IF NOT EXISTS categorias (
     padrao      INTEGER DEFAULT 0
 );
 
+CREATE TABLE IF NOT EXISTS contas (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    nome                TEXT NOT NULL UNIQUE,
+    tipo                TEXT NOT NULL CHECK (tipo IN ('corrente', 'poupanca', 'dinheiro', 'digital')),
+    saldo_inicial_cents INTEGER NOT NULL DEFAULT 0,
+    cor                 TEXT DEFAULT '#1B7A5A',
+    icone               TEXT DEFAULT '💼',
+    criado_em           TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS transacoes (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     data          TEXT NOT NULL,                    -- YYYY-MM-DD
@@ -44,9 +54,23 @@ CREATE TABLE IF NOT EXISTS transacoes (
     valor_cents   INTEGER NOT NULL,                 -- sempre positivo
     tipo          TEXT NOT NULL CHECK (tipo IN ('saida', 'entrada')),
     categoria_id  INTEGER,
+    conta_id      INTEGER,
     observacao    TEXT DEFAULT '',
     criado_em     TEXT NOT NULL,
-    FOREIGN KEY (categoria_id) REFERENCES categorias(id) ON DELETE SET NULL
+    FOREIGN KEY (categoria_id) REFERENCES categorias(id) ON DELETE SET NULL,
+    FOREIGN KEY (conta_id) REFERENCES contas(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS transferencias (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    conta_origem_id   INTEGER NOT NULL,
+    conta_destino_id  INTEGER NOT NULL,
+    valor_cents       INTEGER NOT NULL,
+    data              TEXT NOT NULL,
+    descricao         TEXT DEFAULT '',
+    criado_em         TEXT NOT NULL,
+    FOREIGN KEY (conta_origem_id) REFERENCES contas(id) ON DELETE CASCADE,
+    FOREIGN KEY (conta_destino_id) REFERENCES contas(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS orcamentos (
@@ -78,9 +102,13 @@ CREATE TABLE IF NOT EXISTS alertas (
     mensagem     TEXT NOT NULL,
     lido         INTEGER DEFAULT 0
 );
+"""
 
-CREATE INDEX IF NOT EXISTS idx_transacoes_data ON transacoes(data);
-CREATE INDEX IF NOT EXISTS idx_transacoes_cat  ON transacoes(categoria_id);
+# índices que dependem de colunas migradas em bancos antigos (ver _migrar_colunas_antigas)
+INDICES = """
+CREATE INDEX IF NOT EXISTS idx_transacoes_data  ON transacoes(data);
+CREATE INDEX IF NOT EXISTS idx_transacoes_cat   ON transacoes(categoria_id);
+CREATE INDEX IF NOT EXISTS idx_transacoes_conta ON transacoes(conta_id);
 """
 
 CATEGORIAS_PADRAO = [
@@ -100,10 +128,48 @@ CATEGORIAS_PADRAO = [
 ]
 
 
+def _colunas(conn, tabela):
+    return {r["name"] for r in conn.execute(f"PRAGMA table_info({tabela})")}
+
+
+def _migrar_colunas_antigas(conn):
+    """Bancos criados antes da tabela 'contas' existir não têm transacoes.conta_id."""
+    if "conta_id" not in _colunas(conn, "transacoes"):
+        conn.execute(
+            "ALTER TABLE transacoes ADD COLUMN conta_id INTEGER "
+            "REFERENCES contas(id) ON DELETE SET NULL"
+        )
+        _log().info("Migração: coluna conta_id adicionada em transacoes")
+
+
+def _garantir_conta_padrao(conn):
+    """Na primeira vez que o app ganha suporte a contas, cria a 'Carteira'
+    trazendo o saldo inicial antigo e migrando as transações órfãs pra ela."""
+    tem_conta = conn.execute("SELECT COUNT(*) AS n FROM contas").fetchone()["n"] > 0
+    if tem_conta:
+        return
+    saldo_antigo = conn.execute(
+        "SELECT valor FROM ajustes WHERE chave = 'saldo_inicial_cents'"
+    ).fetchone()
+    saldo_cents = int(saldo_antigo["valor"]) if saldo_antigo else 0
+    cur = conn.execute(
+        "INSERT INTO contas (nome, tipo, saldo_inicial_cents, cor, icone, criado_em) "
+        "VALUES ('Carteira', 'dinheiro', ?, '#1B7A5A', '👛', ?)",
+        (saldo_cents, agora()),
+    )
+    conta_id = cur.lastrowid
+    n = conn.execute(
+        "UPDATE transacoes SET conta_id = ? WHERE conta_id IS NULL", (conta_id,)
+    ).rowcount
+    _log().info("Conta padrão 'Carteira' criada (id=%s), %s transação(ões) migrada(s)", conta_id, n)
+
+
 def init_db():
     conn = get_connection()
     try:
         conn.executescript(SCHEMA)
+        _migrar_colunas_antigas(conn)
+        conn.executescript(INDICES)
         cur = conn.execute("SELECT COUNT(*) AS n FROM categorias")
         primeira_vez = cur.fetchone()["n"] == 0
         if primeira_vez:
@@ -125,6 +191,7 @@ def init_db():
             conn.execute(
                 "INSERT OR IGNORE INTO ajustes (chave, valor) VALUES (?, ?)", (k, v)
             )
+        _garantir_conta_padrao(conn)
         conn.commit()
         if primeira_vez:
             _log().info("Banco criado do zero em %s, categorias padrão inseridas", DB_PATH)

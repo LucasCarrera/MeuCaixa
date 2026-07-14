@@ -9,7 +9,10 @@ const mesHoje = () => new Date().toISOString().slice(0, 7);
 
 function api() { return window.pywebview.api; }
 let categorias = [];
+let contas = [];
 let tipoLancamento = 'saida';
+
+const TIPOS_CONTA = { corrente: 'Conta corrente', poupanca: 'Poupança', dinheiro: 'Dinheiro', digital: 'Conta digital' };
 
 // espera a ponte Python ficar pronta
 window.addEventListener('pywebviewready', iniciar);
@@ -25,6 +28,9 @@ async function iniciar() {
 
   categorias = await api().listar_categorias();
   preencherSelectsCategorias();
+
+  contas = await api().listar_contas();
+  preencherSelectsConta();
 
   const aj = await api().get_ajustes();
   if (!aj.onboarding_ok) mostrarOnboarding();
@@ -103,7 +109,7 @@ function itemTransacao(t, comExcluir = true) {
       <div class="trans-icone" style="background:${t.categoria_cor}22">${t.categoria_icone}</div>
       <div class="trans-info">
         <div class="trans-desc">${escapar(t.descricao)}</div>
-        <div class="trans-meta">${t.categoria_nome} · ${formatarData(t.data)}</div>
+        <div class="trans-meta">${t.categoria_nome} · ${t.conta_icone} ${t.conta_nome} · ${formatarData(t.data)}</div>
       </div>
       <div class="trans-valor ${t.tipo}">${sinal} ${fmt(t.valor)}</div>
       ${comExcluir ? `<button class="trans-excluir" onclick="excluir(${t.id})">🗑️</button>` : ''}
@@ -152,16 +158,23 @@ function preencherSelectsCategorias() {
   hSel.value = atual;
 }
 
+function preencherSelectsConta() {
+  const opcoes = contas.map(c => `<option value="${c.id}">${c.icone} ${c.nome}</option>`).join('');
+  const sel = document.getElementById('l-conta');
+  if (sel) sel.innerHTML = opcoes;
+}
+
 async function salvarTransacao() {
   const valor = document.getElementById('l-valor').value;
   const desc = document.getElementById('l-descricao').value.trim();
   const cat = document.getElementById('l-categoria').value;
+  const conta = document.getElementById('l-conta').value;
   const data = document.getElementById('l-data').value || hoje();
   const obs = document.getElementById('l-obs').value;
   if (!desc) return toast('Escreva com o que foi.');
   if (!valor) return toast('Informe o valor.');
 
-  const r = await api().adicionar_transacao(data, desc, valor, tipoLancamento, cat, obs);
+  const r = await api().adicionar_transacao(data, desc, valor, tipoLancamento, cat, conta, obs);
   if (!r.ok) return toast(r.erro || 'Não deu para salvar.');
 
   document.getElementById('l-valor').value = '';
@@ -242,9 +255,10 @@ async function enviarChat() {
 // ---------------------------------------------------------------- Ajustes
 async function carregarAjustes() {
   const aj = await api().get_ajustes();
-  document.getElementById('a-saldo').value = aj.saldo_inicial ? aj.saldo_inicial.toFixed(2).replace('.', ',') : '';
   document.getElementById('a-piso').value = aj.piso_caixa ? aj.piso_caixa.toFixed(2).replace('.', ',') : '';
   document.getElementById('a-limite').value = aj.limite_mensal ? aj.limite_mensal.toFixed(2).replace('.', ',') : '';
+
+  await carregarContas();
 
   // orçamentos
   const orcs = await api().listar_orcamentos();
@@ -270,7 +284,7 @@ async function carregarAjustes() {
 
 async function salvarAjustesGerais() {
   await api().salvar_ajustes(
-    document.getElementById('a-saldo').value || '0',
+    null,
     document.getElementById('a-piso').value || '0',
     document.getElementById('a-limite').value || '0'
   );
@@ -298,6 +312,83 @@ async function removerCategoria(id) {
   categorias = await api().listar_categorias();
   preencherSelectsCategorias();
   carregarAjustes();
+}
+
+// ---------------------------------------------------------------- Contas
+async function carregarContas() {
+  contas = await api().listar_contas();
+  preencherSelectsConta();
+
+  document.getElementById('lista-contas').innerHTML = contas.map(c => `
+    <div class="conta-item">
+      <span class="conta-icone">${c.icone}</span>
+      <div class="conta-info">
+        <div class="conta-nome">${escapar(c.nome)}</div>
+        <div class="conta-tipo">${TIPOS_CONTA[c.tipo] || c.tipo}</div>
+      </div>
+      <div class="conta-saldo">${fmt(c.saldo_atual)}</div>
+      <button class="trans-excluir" onclick="abrirModalConta(${c.id})">✏️</button>
+      <button class="trans-excluir" onclick="removerConta(${c.id})">🗑️</button>
+    </div>`).join('');
+}
+
+function abrirModalConta(id) {
+  const c = id ? contas.find(c => c.id === id) : null;
+  document.getElementById('mc-titulo').textContent = c ? 'Editar conta' : 'Nova conta';
+  document.getElementById('mc-id').value = c ? c.id : '';
+  document.getElementById('mc-nome').value = c ? c.nome : '';
+  document.getElementById('mc-tipo').value = c ? c.tipo : 'corrente';
+  document.getElementById('mc-saldo').value = c ? c.saldo_inicial.toFixed(2).replace('.', ',') : '';
+  document.getElementById('modal-conta').classList.remove('escondido');
+}
+function fecharModalConta() { document.getElementById('modal-conta').classList.add('escondido'); }
+
+async function salvarContaModal() {
+  const id = document.getElementById('mc-id').value || null;
+  const nome = document.getElementById('mc-nome').value.trim();
+  const tipo = document.getElementById('mc-tipo').value;
+  const saldo = document.getElementById('mc-saldo').value || '0';
+  if (!nome) return toast('Dê um nome pra conta.');
+
+  const r = await api().salvar_conta(nome, tipo, saldo, '#1B7A5A', '💼', id);
+  if (!r.ok) return toast(r.erro || 'Não deu para salvar.');
+  fecharModalConta();
+  toast('✅ Conta salva.');
+  await carregarContas();
+  await recarregarTudo();
+}
+
+async function removerConta(id) {
+  const r = await api().excluir_conta(id);
+  if (!r.ok) return toast(r.erro);
+  toast('Conta removida.');
+  await carregarContas();
+  await recarregarTudo();
+}
+
+function abrirModalTransferencia() {
+  const opcoes = contas.map(c => `<option value="${c.id}">${c.icone} ${c.nome}</option>`).join('');
+  document.getElementById('tr-origem').innerHTML = opcoes;
+  document.getElementById('tr-destino').innerHTML = opcoes;
+  document.getElementById('tr-valor').value = '';
+  document.getElementById('tr-data').value = hoje();
+  document.getElementById('modal-transferencia').classList.remove('escondido');
+}
+function fecharModalTransferencia() { document.getElementById('modal-transferencia').classList.add('escondido'); }
+
+async function confirmarTransferencia() {
+  const origem = document.getElementById('tr-origem').value;
+  const destino = document.getElementById('tr-destino').value;
+  const valor = document.getElementById('tr-valor').value;
+  const data = document.getElementById('tr-data').value || hoje();
+  if (!valor) return toast('Informe o valor.');
+
+  const r = await api().criar_transferencia(origem, destino, valor, data);
+  if (!r.ok) return toast(r.erro || 'Não deu para transferir.');
+  fecharModalTransferencia();
+  toast('✅ Transferência feita.');
+  await carregarContas();
+  await recarregarTudo();
 }
 
 // ---------------------------------------------------------------- IA config

@@ -76,6 +76,8 @@ class Api:
             "categoria_nome": t.get("categoria_nome") or "Sem categoria",
             "categoria_icone": t.get("categoria_icone") or "📦",
             "categoria_cor": t.get("categoria_cor") or "#6B7772",
+            "conta_nome": t.get("conta_nome") or "—",
+            "conta_icone": t.get("conta_icone") or "💼",
             "observacao": t.get("observacao") or "",
         }
 
@@ -90,15 +92,17 @@ class Api:
             "confianca": s["confianca"], "origem": s["origem"],
         }
 
-    def adicionar_transacao(self, data_str, descricao, valor, tipo, categoria_id, observacao=""):
+    def adicionar_transacao(self, data_str, descricao, valor, tipo, categoria_id, conta_id=None, observacao=""):
         data_str = data_str or date.today().strftime("%Y-%m-%d")
         cents = _cents(valor)
         if cents <= 0:
             log.warning("Tentativa de lançar transação com valor inválido: %r", valor)
             return {"ok": False, "erro": "Informe um valor maior que zero."}
         cat_id = int(categoria_id) if categoria_id else None
-        tid = repo.adicionar_transacao(data_str, descricao, cents, tipo, cat_id, observacao)
-        log.info("Transação #%s lançada: %s %s centavos (categoria=%s)", tid, tipo, cents, cat_id)
+        cta_id = int(conta_id) if conta_id else None
+        tid = repo.adicionar_transacao(data_str, descricao, cents, tipo, cat_id, cta_id, observacao)
+        log.info("Transação #%s lançada: %s %s centavos (categoria=%s, conta=%s)",
+                  tid, tipo, cents, cat_id, cta_id)
         # o app aprende com a escolha do usuário
         if cat_id:
             categorizer.registrar_aprendizado(descricao, cat_id)
@@ -108,9 +112,10 @@ class Api:
         alerts.gravar_alertas(avaliados)
         return {"ok": True, "id": tid, "alertas": avaliados}
 
-    def listar_transacoes(self, mes=None, categoria_id=None, tipo=None, busca=None):
+    def listar_transacoes(self, mes=None, categoria_id=None, tipo=None, busca=None, conta_id=None):
         cat = int(categoria_id) if categoria_id else None
-        rows = repo.listar_transacoes(mes=mes, categoria_id=cat, tipo=tipo, busca=busca)
+        cta = int(conta_id) if conta_id else None
+        rows = repo.listar_transacoes(mes=mes, categoria_id=cat, tipo=tipo, busca=busca, conta_id=cta)
         return [self._trans_view(t) for t in rows]
 
     def excluir_transacao(self, trans_id):
@@ -138,12 +143,72 @@ class Api:
         log.info("Categoria #%s excluída", cat_id)
         return {"ok": True}
 
+    # -------------------- Contas --------------------
+    def listar_contas(self):
+        return [
+            {"id": c["id"], "nome": c["nome"], "tipo": c["tipo"],
+             "saldo_inicial": _reais(c["saldo_inicial_cents"]),
+             "saldo_atual": _reais(c["saldo_atual_cents"]),
+             "cor": c["cor"], "icone": c["icone"]}
+            for c in repo.listar_contas()
+        ]
+
+    def salvar_conta(self, nome, tipo, saldo_inicial=0, cor="#1B7A5A", icone="💼", conta_id=None):
+        if not nome or not nome.strip():
+            return {"ok": False, "erro": "Dê um nome para a conta."}
+        cents = _cents(saldo_inicial)
+        try:
+            if conta_id:
+                conta_id = int(conta_id)
+                repo.atualizar_conta(conta_id, nome=nome, tipo=tipo,
+                                      saldo_inicial_cents=cents, cor=cor, icone=icone)
+                log.info("Conta #%s atualizada: %s (%s)", conta_id, nome, tipo)
+                return {"ok": True, "id": conta_id}
+            cid = repo.criar_conta(nome, tipo, cents, cor, icone)
+            log.info("Conta #%s criada: %s (%s)", cid, nome, tipo)
+            return {"ok": True, "id": cid}
+        except Exception:
+            log.warning("Falha ao salvar conta %r", nome, exc_info=True)
+            return {"ok": False, "erro": "Já existe uma conta com esse nome."}
+
+    def excluir_conta(self, conta_id):
+        conta_id = int(conta_id)
+        if len(repo.listar_contas()) <= 1:
+            return {"ok": False, "erro": "Você precisa ter pelo menos uma conta."}
+        if repo.conta_tem_movimentacao(conta_id):
+            return {"ok": False, "erro":
+                     "Essa conta tem transações ou transferências vinculadas. "
+                     "Apague-as antes de remover a conta."}
+        repo.excluir_conta(conta_id)
+        log.info("Conta #%s excluída", conta_id)
+        return {"ok": True}
+
+    def criar_transferencia(self, conta_origem_id, conta_destino_id, valor, data_str=None, descricao=""):
+        origem, destino = int(conta_origem_id), int(conta_destino_id)
+        if origem == destino:
+            return {"ok": False, "erro": "Escolha contas diferentes para a transferência."}
+        cents = _cents(valor)
+        if cents <= 0:
+            return {"ok": False, "erro": "Informe um valor maior que zero."}
+        data_str = data_str or date.today().strftime("%Y-%m-%d")
+        tid = repo.criar_transferencia(origem, destino, cents, data_str, descricao)
+        log.info("Transferência #%s: conta %s -> conta %s, %s centavos", tid, origem, destino, cents)
+        return {"ok": True, "id": tid}
+
+    def listar_transferencias(self):
+        return [
+            {"id": t["id"], "data": t["data"], "valor": _reais(t["valor_cents"]),
+             "descricao": t.get("descricao") or "",
+             "origem_nome": t["origem_nome"], "origem_icone": t["origem_icone"],
+             "destino_nome": t["destino_nome"], "destino_icone": t["destino_icone"]}
+            for t in repo.listar_transferencias()
+        ]
+
     # -------------------- Orçamentos e ajustes --------------------
     def get_ajustes(self):
         a = repo.get_todos_ajustes()
         return {
             "onboarding_ok": a.get("onboarding_ok") == "1",
-            "saldo_inicial": _reais(int(a.get("saldo_inicial_cents", "0"))),
             "piso_caixa": _reais(int(a.get("piso_caixa_cents", "0"))),
             "limite_mensal": _reais(int(a.get("limite_mensal_cents", "0"))),
             "modelo_ia": a.get("modelo_ia", ""),
@@ -152,7 +217,10 @@ class Api:
     def salvar_ajustes(self, saldo_inicial=None, piso_caixa=None, limite_mensal=None,
                        modelo_ia=None, onboarding_ok=None):
         if saldo_inicial is not None:
-            repo.set_ajuste("saldo_inicial_cents", _cents(saldo_inicial))
+            # ainda sem conta escolhida explicitamente (ex.: onboarding) -> cai na primeira conta
+            contas = repo.listar_contas()
+            if contas:
+                repo.atualizar_conta(contas[0]["id"], saldo_inicial_cents=_cents(saldo_inicial))
         if piso_caixa is not None:
             repo.set_ajuste("piso_caixa_cents", _cents(piso_caixa))
         if limite_mensal is not None:
