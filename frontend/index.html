@@ -479,8 +479,9 @@
 <!-- Modal de nova compra no cartão -->
 <div id="modal-compra-cartao" class="modal-fundo escondido" onclick="if(event.target===this)fecharModalCompraCartao()">
   <div class="modal">
-    <h2>Nova compra</h2>
+    <h2 id="mcc-titulo">Nova compra</h2>
     <input type="hidden" id="mcc-cartao-id">
+    <input type="hidden" id="mcc-compra-id">
     <label class="rotulo-campo">Descrição</label>
     <input id="mcc-descricao" class="entrada-texto" placeholder="Ex: Notebook, mercado...">
     <label class="rotulo-campo">Categoria</label>
@@ -496,9 +497,11 @@
         <input id="mcc-parcelas" type="number" min="1" max="36" value="1" class="entrada-texto">
       </div>
     </div>
-    <label class="rotulo-campo">Data da compra</label>
-    <input id="mcc-data" type="date" class="entrada-texto">
-    <button class="btn-grande" onclick="confirmarCompraCartao()">Registrar compra</button>
+    <div id="mcc-bloco-data">
+      <label class="rotulo-campo">Data da compra</label>
+      <input id="mcc-data" type="date" class="entrada-texto">
+    </div>
+    <button id="mcc-botao" class="btn-grande" onclick="confirmarCompraCartao()">Registrar compra</button>
   </div>
 </div>
 

@@ -364,18 +364,45 @@ class Api:
     def listar_compras_cartao(self, cartao_id):
         return [
             {"id": c["id"], "descricao": c["descricao"], "valor_total": _reais(c["valor_total_cents"]),
-             "parcelas_total": c["parcelas_total"],
+             "parcelas_total": c["parcelas_total"], "categoria_id": c.get("categoria_id"),
              "categoria_nome": c.get("categoria_nome") or "Sem categoria",
              "categoria_icone": c.get("categoria_icone") or "📦"}
             for c in cartoes.listar_compras(int(cartao_id))
         ]
+
+    def atualizar_compra_cartao(self, compra_id, descricao, categoria_id, valor_total, parcelas_total):
+        compra_id = int(compra_id)
+        if cartoes.compra_tem_parcela_paga(compra_id):
+            return {"ok": False, "erro":
+                     "Essa compra já tem parcela em fatura paga — não dá para corrigir. "
+                     "Se precisar, ajuste com um lançamento manual no Histórico."}
+        if not descricao or not descricao.strip():
+            return {"ok": False, "erro": "Descreva a compra."}
+        cents = _cents(valor_total)
+        if cents <= 0:
+            return {"ok": False, "erro": "Informe um valor maior que zero."}
+        cat_id = int(categoria_id) if categoria_id else None
+        if not cartoes.atualizar_compra(compra_id, descricao, cat_id, cents, parcelas_total):
+            return {"ok": False, "erro": "Compra não encontrada."}
+        log.info("Compra #%s do cartão corrigida pelo usuário", compra_id)
+        return {"ok": True}
+
+    def excluir_compra_cartao(self, compra_id):
+        compra_id = int(compra_id)
+        if cartoes.compra_tem_parcela_paga(compra_id):
+            return {"ok": False, "erro":
+                     "Essa compra já tem parcela em fatura paga — não dá para excluir. "
+                     "Se precisar, ajuste com um lançamento manual no Histórico."}
+        cartoes.excluir_compra(compra_id)
+        return {"ok": True}
 
     def fatura_cartao(self, cartao_id, mes=None):
         f = cartoes.fatura(int(cartao_id), mes)
         return {
             "mes": f["mes"], "total": _reais(f["total_cents"]), "paga": f["paga"],
             "parcelas": [
-                {"id": p["id"], "descricao": p["descricao"], "numero": p["numero"],
+                {"id": p["id"], "compra_id": p["compra_id"], "descricao": p["descricao"],
+                 "numero": p["numero"],
                  "parcelas_total": p["parcelas_total"], "valor": _reais(p["valor_cents"]),
                  "paga": bool(p["paga"]), "categoria_nome": p.get("categoria_nome") or "Sem categoria",
                  "categoria_icone": p.get("categoria_icone") or "📦"}

@@ -583,6 +583,9 @@ async function carregarCartoes() {
               <div class="trans-meta">${p.categoria_nome} · parcela ${p.numero}/${p.parcelas_total}</div>
             </div>
             <div class="trans-valor saida">${fmt(p.valor)}</div>
+            ${p.paga ? '' : `
+              <button class="trans-excluir" title="Corrigir compra" onclick="abrirModalEditarCompra(${c.id}, ${p.compra_id})">✏️</button>
+              <button class="trans-excluir" title="Excluir compra" onclick="removerCompraCartao(${p.compra_id})">🗑️</button>`}
           </div>`).join('')
       : '<div class="vazio">Nenhuma compra nessa fatura.</div>';
 
@@ -667,21 +670,46 @@ async function removerCartao(id) {
   await carregarCartoes();
 }
 
-function abrirModalCompraCartao(cartaoId) {
+function _prepararModalCompra(cartaoId) {
   document.getElementById('mcc-cartao-id').value = cartaoId;
-  document.getElementById('mcc-descricao').value = '';
-  document.getElementById('mcc-valor').value = '';
-  document.getElementById('mcc-parcelas').value = 1;
-  document.getElementById('mcc-data').value = hoje();
   const doTipoSaida = categorias.filter(c => c.tipo === 'saida');
   document.getElementById('mcc-categoria').innerHTML =
     doTipoSaida.map(c => `<option value="${c.id}">${rotuloCategoria(c)}</option>`).join('');
   document.getElementById('modal-compra-cartao').classList.remove('escondido');
 }
+
+function abrirModalCompraCartao(cartaoId) {
+  _prepararModalCompra(cartaoId);
+  document.getElementById('mcc-titulo').textContent = 'Nova compra';
+  document.getElementById('mcc-botao').textContent = 'Registrar compra';
+  document.getElementById('mcc-compra-id').value = '';
+  document.getElementById('mcc-descricao').value = '';
+  document.getElementById('mcc-valor').value = '';
+  document.getElementById('mcc-parcelas').value = 1;
+  document.getElementById('mcc-bloco-data').style.display = '';
+  document.getElementById('mcc-data').value = hoje();
+}
+
+async function abrirModalEditarCompra(cartaoId, compraId) {
+  const compras = await api().listar_compras_cartao(cartaoId);
+  const compra = compras.find(c => c.id === compraId);
+  if (!compra) return;
+  _prepararModalCompra(cartaoId);
+  document.getElementById('mcc-titulo').textContent = 'Corrigir compra';
+  document.getElementById('mcc-botao').textContent = 'Salvar correção';
+  document.getElementById('mcc-compra-id').value = compraId;
+  document.getElementById('mcc-descricao').value = compra.descricao;
+  document.getElementById('mcc-valor').value = compra.valor_total.toFixed(2).replace('.', ',');
+  document.getElementById('mcc-parcelas').value = compra.parcelas_total;
+  if (compra.categoria_id) document.getElementById('mcc-categoria').value = compra.categoria_id;
+  // a data não muda numa correção de valor: as parcelas seguem na mesma fatura
+  document.getElementById('mcc-bloco-data').style.display = 'none';
+}
 function fecharModalCompraCartao() { document.getElementById('modal-compra-cartao').classList.add('escondido'); }
 
 async function confirmarCompraCartao() {
   const cartaoId = document.getElementById('mcc-cartao-id').value;
+  const compraId = document.getElementById('mcc-compra-id').value;
   const descricao = document.getElementById('mcc-descricao').value.trim();
   const categoria = document.getElementById('mcc-categoria').value;
   const valor = document.getElementById('mcc-valor').value;
@@ -690,10 +718,19 @@ async function confirmarCompraCartao() {
   if (!descricao) return toast('Descreva a compra.');
   if (!valor) return toast('Informe o valor.');
 
-  const r = await api().registrar_compra_cartao(cartaoId, descricao, categoria, valor, parcelas, data);
-  if (!r.ok) return toast(r.erro || 'Não deu para registrar.');
+  const r = compraId
+    ? await api().atualizar_compra_cartao(compraId, descricao, categoria, valor, parcelas)
+    : await api().registrar_compra_cartao(cartaoId, descricao, categoria, valor, parcelas, data);
+  if (!r.ok) return toast(r.erro || 'Não deu para salvar.');
   fecharModalCompraCartao();
-  toast('✅ Compra registrada.');
+  toast(compraId ? '✅ Compra corrigida.' : '✅ Compra registrada.');
+  await carregarCartoes();
+}
+
+async function removerCompraCartao(compraId) {
+  const r = await api().excluir_compra_cartao(compraId);
+  if (!r.ok) return toast(r.erro);
+  toast('Compra excluída.');
   await carregarCartoes();
 }
 

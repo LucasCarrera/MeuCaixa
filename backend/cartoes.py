@@ -121,6 +121,19 @@ def excluir_cartao(cartao_id):
 # ----------------------------------------------------------------------------
 # Compras parceladas
 # ----------------------------------------------------------------------------
+def _gerar_parcelas(conn, compra_id, cartao_id, valor_total_cents, parcelas_total, mes_inicial):
+    base = valor_total_cents // parcelas_total
+    resto = valor_total_cents - base * parcelas_total
+    for i in range(parcelas_total):
+        valor = base + resto if i == parcelas_total - 1 else base
+        mes_fatura = _somar_mes(mes_inicial, i)
+        conn.execute(
+            "INSERT INTO parcelas_cartao (compra_id, cartao_id, numero, valor_cents, mes_fatura, paga) "
+            "VALUES (?,?,?,?,?,0)",
+            (compra_id, cartao_id, i + 1, valor, mes_fatura),
+        )
+
+
 def criar_compra(cartao_id, descricao, categoria_id, valor_total_cents, parcelas_total, data_compra=None):
     data_compra = data_compra or date.today().strftime("%Y-%m-%d")
     parcelas_total = max(1, int(parcelas_total))
@@ -141,21 +154,68 @@ def criar_compra(cartao_id, descricao, categoria_id, valor_total_cents, parcelas
             (cartao_id, descricao.strip(), categoria_id, valor_total_cents, parcelas_total, agora()),
         )
         compra_id = cur.lastrowid
-
-        base = valor_total_cents // parcelas_total
-        resto = valor_total_cents - base * parcelas_total
-        for i in range(parcelas_total):
-            valor = base + resto if i == parcelas_total - 1 else base
-            mes_fatura = _somar_mes(mes_inicial, i)
-            conn.execute(
-                "INSERT INTO parcelas_cartao (compra_id, cartao_id, numero, valor_cents, mes_fatura, paga) "
-                "VALUES (?,?,?,?,?,0)",
-                (compra_id, cartao_id, i + 1, valor, mes_fatura),
-            )
+        _gerar_parcelas(conn, compra_id, cartao_id, valor_total_cents, parcelas_total, mes_inicial)
         conn.commit()
         log.info("Compra #%s no cartão #%s: %s centavos em %sx (1ª fatura %s)",
                   compra_id, cartao_id, valor_total_cents, parcelas_total, mes_inicial)
         return compra_id
+    finally:
+        conn.close()
+
+
+def compra_tem_parcela_paga(compra_id):
+    conn = get_connection()
+    try:
+        n = conn.execute(
+            "SELECT COUNT(*) AS n FROM parcelas_cartao WHERE compra_id = ? AND paga = 1",
+            (compra_id,),
+        ).fetchone()["n"]
+        return n > 0
+    finally:
+        conn.close()
+
+
+def atualizar_compra(compra_id, descricao, categoria_id, valor_total_cents, parcelas_total):
+    """Corrige uma compra lançada errada, regenerando as parcelas.
+
+    Só permitido enquanto NENHUMA parcela foi paga: depois que uma fatura é
+    paga, a transação real já saiu do caixa e alterar a compra deixaria a
+    contabilidade inconsistente. Mantém o mês da 1ª fatura original (a data
+    da compra não muda numa correção de valor).
+    """
+    parcelas_total = max(1, int(parcelas_total))
+    valor_total_cents = int(valor_total_cents)
+    conn = get_connection()
+    try:
+        compra = conn.execute(
+            "SELECT * FROM compras_cartao WHERE id = ?", (compra_id,)
+        ).fetchone()
+        if not compra:
+            return False
+        mes_inicial = conn.execute(
+            "SELECT MIN(mes_fatura) AS m FROM parcelas_cartao WHERE compra_id = ?", (compra_id,)
+        ).fetchone()["m"]
+        conn.execute(
+            "UPDATE compras_cartao SET descricao = ?, categoria_id = ?, "
+            "valor_total_cents = ?, parcelas_total = ? WHERE id = ?",
+            (descricao.strip(), categoria_id, valor_total_cents, parcelas_total, compra_id),
+        )
+        conn.execute("DELETE FROM parcelas_cartao WHERE compra_id = ?", (compra_id,))
+        _gerar_parcelas(conn, compra_id, compra["cartao_id"], valor_total_cents,
+                        parcelas_total, mes_inicial)
+        conn.commit()
+        log.info("Compra #%s corrigida: %s centavos em %sx", compra_id, valor_total_cents, parcelas_total)
+        return True
+    finally:
+        conn.close()
+
+
+def excluir_compra(compra_id):
+    conn = get_connection()
+    try:
+        conn.execute("DELETE FROM compras_cartao WHERE id = ?", (compra_id,))
+        conn.commit()
+        log.info("Compra #%s excluída (parcelas removidas em cascata)", compra_id)
     finally:
         conn.close()
 
