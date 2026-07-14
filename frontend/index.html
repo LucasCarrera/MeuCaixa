@@ -355,8 +355,35 @@
       </div>
 
       <div class="card">
+        <h3>🎨 Aparência e perfil</h3>
+        <div class="linha-2">
+          <label class="bloco-ajuste">
+            <span>Tema</span>
+            <select id="a-tema" class="entrada-texto" onchange="trocarTema(this.value)">
+              <option value="claro">Claro</option>
+              <option value="escuro">Escuro</option>
+            </select>
+          </label>
+          <label class="bloco-ajuste">
+            <span>Seu nome (pra saudação)</span>
+            <input id="a-nome" class="entrada-texto" placeholder="Como quer ser chamado?"
+              onchange="salvarNome(this.value)">
+          </label>
+        </div>
+      </div>
+
+      <div class="card">
         <h3>🌱 IA local (Ollama)</h3>
         <div id="ia-config"></div>
+      </div>
+
+      <div class="card">
+        <h3>🔒 Seus dados</h3>
+        <p class="sub">Tudo fica só no seu computador. Você pode levar seus dados ou apagar tudo quando quiser.</p>
+        <div style="display:flex; gap:10px; flex-wrap:wrap">
+          <button class="btn-medio" style="margin:0" onclick="exportarDados()">📦 Exportar tudo (JSON)</button>
+          <button class="btn-medio" style="margin:0; background:var(--red)" onclick="abrirModalApagarTudo()">🗑️ Apagar tudo</button>
+        </div>
       </div>
 
       <div class="card">
@@ -547,6 +574,18 @@
     <label class="rotulo-campo">Em qual conta?</label>
     <select id="mpc-conta" class="entrada-texto"></select>
     <button class="btn-grande" onclick="confirmarPagarConta()">Confirmar</button>
+  </div>
+</div>
+
+<!-- Modal de apagar tudo -->
+<div id="modal-apagar-tudo" class="modal-fundo escondido" onclick="if(event.target===this)fecharModalApagarTudo()">
+  <div class="modal">
+    <h2>⚠️ Apagar TODOS os dados</h2>
+    <p class="sub">Isso remove transações, contas, cartões, investimentos, metas — tudo.
+      Não tem como desfazer. Se quiser guardar uma cópia antes, use "Exportar tudo".</p>
+    <label class="rotulo-campo">Digite <b>apagar</b> para confirmar</label>
+    <input id="mat-confirmacao" class="entrada-texto" autocomplete="off">
+    <button class="btn-grande" style="background:var(--red)" onclick="confirmarApagarTudo()">Apagar tudo pra sempre</button>
   </div>
 </div>
 

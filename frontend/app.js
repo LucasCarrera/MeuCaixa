@@ -33,6 +33,8 @@ async function iniciar() {
   preencherSelectsConta();
 
   const aj = await api().get_ajustes();
+  aplicarTema(aj.tema);
+  aplicarSaudacao(aj.nome_usuario);
   if (!aj.onboarding_ok) mostrarOnboarding();
 
   atualizarStatusIA();
@@ -284,6 +286,8 @@ async function carregarAjustes() {
   const aj = await api().get_ajustes();
   document.getElementById('a-piso').value = aj.piso_caixa ? aj.piso_caixa.toFixed(2).replace('.', ',') : '';
   document.getElementById('a-limite').value = aj.limite_mensal ? aj.limite_mensal.toFixed(2).replace('.', ',') : '';
+  document.getElementById('a-tema').value = aj.tema || 'claro';
+  document.getElementById('a-nome').value = aj.nome_usuario || '';
 
   await carregarContas();
   await carregarContasPagar();
@@ -1044,6 +1048,50 @@ const ob = {
   }
 };
 function mostrarOnboarding() { ob.ir(1); ob.mostrar(); }
+
+// ------------------------------------------- Tema, perfil e "Seus dados"
+function aplicarTema(tema) {
+  document.documentElement.dataset.theme = tema === 'escuro' ? 'escuro' : 'claro';
+}
+
+function aplicarSaudacao(nome) {
+  const rotulo = document.querySelector('.hero-rotulo');
+  if (rotulo) rotulo.textContent = nome ? `Olá, ${nome} — dinheiro em caixa` : 'Dinheiro em caixa';
+}
+
+async function trocarTema(tema) {
+  aplicarTema(tema);
+  await api().salvar_ajustes(null, null, null, null, null, tema);
+  toast(tema === 'escuro' ? '🌙 Tema escuro ativado.' : '☀️ Tema claro ativado.');
+}
+
+async function salvarNome(nome) {
+  await api().salvar_ajustes(null, null, null, null, null, null, nome);
+  aplicarSaudacao(nome.trim());
+  toast('✅ Nome salvo.');
+}
+
+async function exportarDados() {
+  toast('Exportando seus dados...');
+  const r = await api().exportar_dados();
+  if (r.ok) toast('✅ Exportado! A pasta foi aberta.');
+  else toast(r.erro);
+}
+
+function abrirModalApagarTudo() {
+  document.getElementById('mat-confirmacao').value = '';
+  document.getElementById('modal-apagar-tudo').classList.remove('escondido');
+}
+function fecharModalApagarTudo() { document.getElementById('modal-apagar-tudo').classList.add('escondido'); }
+
+async function confirmarApagarTudo() {
+  const conf = document.getElementById('mat-confirmacao').value;
+  const r = await api().apagar_tudo(conf);
+  if (!r.ok) return toast(r.erro);
+  fecharModalApagarTudo();
+  toast('Tudo apagado. Recomeçando do zero...');
+  setTimeout(() => location.reload(), 1200);
+}
 
 // ---------------------------------------------------------------- Utilitários
 function toast(msg) {

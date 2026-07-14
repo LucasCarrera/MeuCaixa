@@ -19,6 +19,7 @@ from . import cartoes
 from . import investimentos
 from . import metas
 from . import recorrencias
+from . import dados
 from .logger import get_logger
 
 log = get_logger(__name__)
@@ -235,10 +236,12 @@ class Api:
             "piso_caixa": _reais(int(a.get("piso_caixa_cents", "0"))),
             "limite_mensal": _reais(int(a.get("limite_mensal_cents", "0"))),
             "modelo_ia": a.get("modelo_ia", ""),
+            "tema": a.get("tema", "claro"),
+            "nome_usuario": a.get("nome_usuario", ""),
         }
 
     def salvar_ajustes(self, saldo_inicial=None, piso_caixa=None, limite_mensal=None,
-                       modelo_ia=None, onboarding_ok=None):
+                       modelo_ia=None, onboarding_ok=None, tema=None, nome_usuario=None):
         if saldo_inicial is not None:
             # ainda sem conta escolhida explicitamente (ex.: onboarding) -> cai na primeira conta
             contas = repo.listar_contas()
@@ -252,6 +255,10 @@ class Api:
             repo.set_ajuste("modelo_ia", modelo_ia)
         if onboarding_ok is not None:
             repo.set_ajuste("onboarding_ok", "1" if onboarding_ok else "0")
+        if tema is not None:
+            repo.set_ajuste("tema", tema)
+        if nome_usuario is not None:
+            repo.set_ajuste("nome_usuario", nome_usuario.strip())
         return {"ok": True}
 
     def listar_orcamentos(self):
@@ -528,6 +535,22 @@ class Api:
 
     def excluir_recorrencia(self, recorrencia_id):
         recorrencias.excluir_recorrencia(int(recorrencia_id))
+        return {"ok": True}
+
+    # -------------------- Seus dados --------------------
+    def exportar_dados(self):
+        try:
+            caminho = dados.exportar_tudo()
+        except Exception:
+            log.exception("Falha ao exportar os dados")
+            return {"ok": False, "erro": "Não consegui exportar. Tente novamente."}
+        _abrir_arquivo(dados.EXPORT_DIR)
+        return {"ok": True, "caminho": caminho}
+
+    def apagar_tudo(self, confirmacao):
+        if (confirmacao or "").strip().lower() != "apagar":
+            return {"ok": False, "erro": "Digite 'apagar' para confirmar."}
+        dados.apagar_tudo()
         return {"ok": True}
 
     # -------------------- IA local --------------------
