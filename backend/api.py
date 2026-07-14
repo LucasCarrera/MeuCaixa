@@ -1,0 +1,231 @@
+"""Ponte entre a interface (JavaScript) e o Python.
+
+Cada método desta classe fica disponível no frontend como
+`window.pywebview.api.nome_do_metodo(...)` e devolve dados prontos (dicts/listas)
+já em REAIS, não em centavos — a interface nunca precisa saber de centavos.
+"""
+
+import os
+import sys
+import subprocess
+from datetime import date
+
+from . import repository as repo
+from . import categorizer
+from . import alerts
+from . import reports
+from . import llm
+from .logger import get_logger
+
+log = get_logger(__name__)
+
+
+def _cents(valor_reais):
+    """Converte '1.234,56' ou 1234.56 para centavos inteiros, sem erro de float."""
+    if isinstance(valor_reais, str):
+        v = valor_reais.strip().replace("R$", "").replace(" ", "")
+        # formato brasileiro: 1.234,56
+        if "," in v:
+            v = v.replace(".", "").replace(",", ".")
+        valor_reais = float(v or 0)
+    return int(round(float(valor_reais) * 100))
+
+
+def _reais(cents):
+    return round((cents or 0) / 100.0, 2)
+
+
+def _abrir_arquivo(caminho):
+    try:
+        if sys.platform.startswith("win"):
+            os.startfile(caminho)  # noqa
+        elif sys.platform == "darwin":
+            subprocess.run(["open", caminho])
+        else:
+            subprocess.run(["xdg-open", caminho])
+    except Exception:
+        log.warning("Não consegui abrir o arquivo %s", caminho, exc_info=True)
+
+
+class Api:
+    # -------------------- Dashboard --------------------
+    def get_dashboard(self, mes=None):
+        mes = mes or date.today().strftime("%Y-%m")
+        resumo = repo.resumo_mes(mes)
+        # só avalia para exibir; a gravação no sino acontece ao lançar transações
+        avaliados = alerts.avaliar(mes)
+        return {
+            "mes": mes,
+            "entradas": _reais(resumo["entradas_cents"]),
+            "saidas": _reais(resumo["saidas_cents"]),
+            "saldo_mes": _reais(resumo["saldo_mes_cents"]),
+            "caixa": _reais(resumo["caixa_cents"]),
+            "por_categoria": [
+                {"nome": c["nome"], "icone": c["icone"], "cor": c["cor"],
+                 "valor": _reais(c["total"])}
+                for c in resumo["por_categoria"]
+            ],
+            "alertas": avaliados,
+            "ultimas": [self._trans_view(t) for t in repo.listar_transacoes(mes=mes, limite=8)],
+        }
+
+    def _trans_view(self, t):
+        return {
+            "id": t["id"], "data": t["data"], "descricao": t["descricao"],
+            "valor": _reais(t["valor_cents"]), "tipo": t["tipo"],
+            "categoria_nome": t.get("categoria_nome") or "Sem categoria",
+            "categoria_icone": t.get("categoria_icone") or "📦",
+            "categoria_cor": t.get("categoria_cor") or "#6B7772",
+            "observacao": t.get("observacao") or "",
+        }
+
+    # -------------------- Transações --------------------
+    def sugerir_categoria(self, descricao):
+        s = categorizer.sugerir_categoria(descricao)
+        cat = next((c for c in repo.listar_categorias()
+                    if c["id"] == s["categoria_id"]), None)
+        return {
+            "categoria_id": s["categoria_id"],
+            "categoria_nome": cat["nome"] if cat else "Outros",
+            "confianca": s["confianca"], "origem": s["origem"],
+        }
+
+    def adicionar_transacao(self, data_str, descricao, valor, tipo, categoria_id, observacao=""):
+        data_str = data_str or date.today().strftime("%Y-%m-%d")
+        cents = _cents(valor)
+        if cents <= 0:
+            log.warning("Tentativa de lançar transação com valor inválido: %r", valor)
+            return {"ok": False, "erro": "Informe um valor maior que zero."}
+        cat_id = int(categoria_id) if categoria_id else None
+        tid = repo.adicionar_transacao(data_str, descricao, cents, tipo, cat_id, observacao)
+        log.info("Transação #%s lançada: %s %s centavos (categoria=%s)", tid, tipo, cents, cat_id)
+        # o app aprende com a escolha do usuário
+        if cat_id:
+            categorizer.registrar_aprendizado(descricao, cat_id)
+        # avalia alertas, incluindo anomalia desta transação
+        nova = {"tipo": tipo, "valor_cents": cents, "categoria_id": cat_id}
+        avaliados = alerts.avaliar(data_str[:7], ultima_transacao=nova)
+        alerts.gravar_alertas(avaliados)
+        return {"ok": True, "id": tid, "alertas": avaliados}
+
+    def listar_transacoes(self, mes=None, categoria_id=None, tipo=None, busca=None):
+        cat = int(categoria_id) if categoria_id else None
+        rows = repo.listar_transacoes(mes=mes, categoria_id=cat, tipo=tipo, busca=busca)
+        return [self._trans_view(t) for t in rows]
+
+    def excluir_transacao(self, trans_id):
+        repo.excluir_transacao(int(trans_id))
+        log.info("Transação #%s excluída", trans_id)
+        return {"ok": True}
+
+    # -------------------- Categorias --------------------
+    def listar_categorias(self, tipo=None):
+        return repo.listar_categorias(tipo)
+
+    def criar_categoria(self, nome, tipo, icone="💰", cor="#1B7A5A"):
+        if not nome.strip():
+            return {"ok": False, "erro": "Dê um nome para a categoria."}
+        try:
+            cid = repo.criar_categoria(nome, tipo, icone, cor)
+            log.info("Categoria #%s criada: %s (%s)", cid, nome, tipo)
+            return {"ok": True, "id": cid}
+        except Exception:
+            log.warning("Falha ao criar categoria %r (provável nome duplicado)", nome, exc_info=True)
+            return {"ok": False, "erro": "Já existe uma categoria com esse nome."}
+
+    def excluir_categoria(self, cat_id):
+        repo.excluir_categoria(int(cat_id))
+        log.info("Categoria #%s excluída", cat_id)
+        return {"ok": True}
+
+    # -------------------- Orçamentos e ajustes --------------------
+    def get_ajustes(self):
+        a = repo.get_todos_ajustes()
+        return {
+            "onboarding_ok": a.get("onboarding_ok") == "1",
+            "saldo_inicial": _reais(int(a.get("saldo_inicial_cents", "0"))),
+            "piso_caixa": _reais(int(a.get("piso_caixa_cents", "0"))),
+            "limite_mensal": _reais(int(a.get("limite_mensal_cents", "0"))),
+            "modelo_ia": a.get("modelo_ia", ""),
+        }
+
+    def salvar_ajustes(self, saldo_inicial=None, piso_caixa=None, limite_mensal=None,
+                       modelo_ia=None, onboarding_ok=None):
+        if saldo_inicial is not None:
+            repo.set_ajuste("saldo_inicial_cents", _cents(saldo_inicial))
+        if piso_caixa is not None:
+            repo.set_ajuste("piso_caixa_cents", _cents(piso_caixa))
+        if limite_mensal is not None:
+            repo.set_ajuste("limite_mensal_cents", _cents(limite_mensal))
+        if modelo_ia is not None:
+            repo.set_ajuste("modelo_ia", modelo_ia)
+        if onboarding_ok is not None:
+            repo.set_ajuste("onboarding_ok", "1" if onboarding_ok else "0")
+        return {"ok": True}
+
+    def listar_orcamentos(self):
+        return [
+            {"categoria_id": o["categoria_id"], "categoria_nome": o.get("categoria_nome"),
+             "categoria_icone": o.get("categoria_icone"), "limite": _reais(o["limite_cents"])}
+            for o in repo.listar_orcamentos()
+        ]
+
+    def salvar_orcamento(self, categoria_id, limite):
+        repo.salvar_orcamento(int(categoria_id), _cents(limite))
+        return {"ok": True}
+
+    # -------------------- Alertas --------------------
+    def listar_alertas(self):
+        return alerts.listar_alertas()
+
+    def marcar_alertas_lidos(self):
+        alerts.marcar_todos_lidos()
+        return {"ok": True}
+
+    # -------------------- Relatórios --------------------
+    def exportar_excel(self, mes=None):
+        try:
+            caminho = reports.exportar_excel(mes)
+        except Exception:
+            log.exception("Falha ao exportar Excel do mês %s", mes)
+            return {"ok": False, "erro": "Não consegui gerar o Excel. Tente novamente."}
+        log.info("Excel exportado: %s", caminho)
+        _abrir_arquivo(caminho)
+        return {"ok": True, "caminho": caminho}
+
+    def exportar_pdf(self, mes=None):
+        try:
+            caminho = reports.exportar_pdf(mes)
+        except Exception:
+            log.exception("Falha ao exportar PDF do mês %s", mes)
+            return {"ok": False, "erro": "Não consegui gerar o PDF. Tente novamente."}
+        log.info("PDF exportado: %s", caminho)
+        _abrir_arquivo(caminho)
+        return {"ok": True, "caminho": caminho}
+
+    def abrir_pasta_relatorios(self):
+        _abrir_arquivo(reports.REL_DIR)
+        return {"ok": True}
+
+    # -------------------- IA local --------------------
+    def ia_status(self):
+        st = llm.status()
+        rec = llm.modelos_recomendados()
+        return {
+            "disponivel": st["disponivel"],
+            "instalados": st["instalados"],
+            "ram_gb": rec["ram_gb"],
+            "recomendados": rec["modelos"],
+            "modelo_ativo": repo.get_ajuste("modelo_ia", ""),
+        }
+
+    def ia_conversar(self, pergunta):
+        return llm.conversar(pergunta)
+
+    def baixar_modelo(self, nome):
+        log.info("Usuário pediu download do modelo %s", nome)
+        llm.baixar_modelo(nome)
+        return {"ok": True}
+
+    def progresso_download_modelo(self, nome):
+        return llm.progresso_download(nome)

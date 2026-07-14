@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MeuCaixa</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- ONBOARDING (primeira vez) -->
+<div id="onboarding" class="modal-fundo escondido">
+  <div class="modal onboarding">
+    <div class="ob-passo" data-passo="1">
+      <div class="ob-emoji">👋</div>
+      <h2>Bem-vindo ao MeuCaixa</h2>
+      <p class="sub">Vamos deixar seu dinheiro organizado em 3 passinhos. Leva menos de um minuto.</p>
+      <button class="btn-grande" onclick="ob.proximo()">Começar</button>
+    </div>
+
+    <div class="ob-passo escondido" data-passo="2">
+      <div class="ob-emoji">💰</div>
+      <h2>Quanto você tem hoje?</h2>
+      <p class="sub">É o dinheiro que está na sua conta ou carteira agora. Pode ser aproximado.</p>
+      <label class="campo-moeda">
+        <span>R$</span>
+        <input id="ob-saldo" type="text" inputmode="decimal" placeholder="0,00">
+      </label>
+      <button class="btn-grande" onclick="ob.proximo()">Continuar</button>
+    </div>
+
+    <div class="ob-passo escondido" data-passo="3">
+      <div class="ob-emoji">🛟</div>
+      <h2>Quer avisos de segurança?</h2>
+      <p class="sub">Deixe em branco se não quiser. Você pode mudar depois em Ajustes.</p>
+      <label class="campo-linha">
+        <span>Me avise se o caixa cair abaixo de</span>
+        <div class="campo-moeda pequeno"><span>R$</span><input id="ob-piso" type="text" inputmode="decimal" placeholder="0,00"></div>
+      </label>
+      <label class="campo-linha">
+        <span>Me avise se eu gastar mais de (por mês)</span>
+        <div class="campo-moeda pequeno"><span>R$</span><input id="ob-limite" type="text" inputmode="decimal" placeholder="0,00"></div>
+      </label>
+      <button class="btn-grande" onclick="ob.finalizar()">Tudo pronto!</button>
+    </div>
+  </div>
+</div>
+
+<div class="app">
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="logo">
+      <span class="logo-mark">🌱</span>
+      <span class="logo-nome">MeuCaixa</span>
+    </div>
+    <nav>
+      <button class="nav-item ativo" data-view="inicio"><span>🏠</span> Início</button>
+      <button class="nav-item" data-view="lancar"><span>➕</span> Lançar</button>
+      <button class="nav-item" data-view="historico"><span>📋</span> Histórico</button>
+      <button class="nav-item" data-view="assistente"><span>💬</span> Assistente</button>
+      <button class="nav-item" data-view="relatorios"><span>📄</span> Relatórios</button>
+      <button class="nav-item" data-view="ajustes"><span>⚙️</span> Ajustes</button>
+    </nav>
+    <div class="sidebar-rodape">
+      <div id="ia-badge" class="ia-badge desligada" title="Estado da IA local">
+        <span class="ponto"></span> IA local
+      </div>
+    </div>
+  </aside>
+
+  <!-- CONTEÚDO -->
+  <main class="conteudo">
+    <header class="topo">
+      <div>
+        <label class="mes-seletor">
+          <input type="month" id="mes-atual">
+        </label>
+      </div>
+      <button class="sino" onclick="mostrarAlertas()">
+        🔔 <span id="badge-alertas" class="badge-alertas escondido">0</span>
+      </button>
+    </header>
+
+    <!-- VIEW: INÍCIO -->
+    <section class="view" id="view-inicio">
+      <div class="hero-caixa">
+        <span class="hero-rotulo">Dinheiro em caixa</span>
+        <div class="hero-valor" id="hero-caixa">R$ 0,00</div>
+        <span class="hero-dica" id="hero-dica"></span>
+      </div>
+
+      <div class="cards-3">
+        <div class="card mini">
+          <span class="mini-rotulo">Entrou este mês</span>
+          <span class="mini-valor entrada" id="card-entradas">R$ 0,00</span>
+        </div>
+        <div class="card mini">
+          <span class="mini-rotulo">Saiu este mês</span>
+          <span class="mini-valor saida" id="card-saidas">R$ 0,00</span>
+        </div>
+        <div class="card mini">
+          <span class="mini-rotulo">Sobrou no mês</span>
+          <span class="mini-valor" id="card-saldo">R$ 0,00</span>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <div class="card">
+          <h3>Para onde foi seu dinheiro</h3>
+          <div id="grafico-categorias" class="barras"></div>
+        </div>
+        <div class="card">
+          <h3>Últimas movimentações</h3>
+          <div id="lista-ultimas" class="lista-trans"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- VIEW: LANÇAR -->
+    <section class="view escondido" id="view-lancar">
+      <div class="card form-lancar">
+        <h2>O que aconteceu com seu dinheiro?</h2>
+        <div class="tipo-toggle">
+          <button class="tipo-btn saida ativo" data-tipo="saida">💸 Gastei</button>
+          <button class="tipo-btn entrada" data-tipo="entrada">💵 Recebi</button>
+        </div>
+
+        <label class="campo-moeda destaque">
+          <span>R$</span>
+          <input id="l-valor" type="text" inputmode="decimal" placeholder="0,00" autocomplete="off">
+        </label>
+
+        <label class="rotulo-campo">Com o quê? (ex: iFood, mercado, salário)</label>
+        <input id="l-descricao" type="text" class="entrada-texto" placeholder="Digite aqui..." autocomplete="off">
+
+        <div id="sugestao-cat" class="sugestao escondido"></div>
+
+        <div class="linha-2">
+          <div>
+            <label class="rotulo-campo">Categoria</label>
+            <select id="l-categoria" class="entrada-texto"></select>
+          </div>
+          <div>
+            <label class="rotulo-campo">Data</label>
+            <input id="l-data" type="date" class="entrada-texto">
+          </div>
+        </div>
+
+        <label class="rotulo-campo">Observação (opcional)</label>
+        <input id="l-obs" type="text" class="entrada-texto" placeholder="Alguma nota...">
+
+        <button class="btn-grande" onclick="salvarTransacao()">Salvar</button>
+      </div>
+    </section>
+
+    <!-- VIEW: HISTÓRICO -->
+    <section class="view escondido" id="view-historico">
+      <div class="card">
+        <div class="filtros">
+          <input id="h-busca" type="text" placeholder="🔍 Buscar por descrição..." class="entrada-texto">
+          <select id="h-tipo" class="entrada-texto">
+            <option value="">Tudo</option>
+            <option value="saida">Só gastos</option>
+            <option value="entrada">Só recebimentos</option>
+          </select>
+          <select id="h-categoria" class="entrada-texto"><option value="">Todas as categorias</option></select>
+        </div>
+        <div id="lista-historico" class="lista-trans"></div>
+      </div>
+    </section>
+
+    <!-- VIEW: ASSISTENTE -->
+    <section class="view escondido" id="view-assistente">
+      <div class="card chat-card">
+        <div class="chat-topo">
+          <div><h2>💬 Assistente</h2><p class="sub">Pergunte sobre seus gastos. Ex: "onde gastei mais?", "posso comprar algo de R$ 200?"</p></div>
+        </div>
+        <div id="chat-mensagens" class="chat-mensagens"></div>
+        <div class="chat-entrada">
+          <input id="chat-input" type="text" placeholder="Escreva sua pergunta..." onkeydown="if(event.key==='Enter')enviarChat()">
+          <button onclick="enviarChat()">Enviar</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- VIEW: RELATÓRIOS -->
+    <section class="view escondido" id="view-relatorios">
+      <div class="card">
+        <h2>📄 Relatórios do mês</h2>
+        <p class="sub">Gere um resumo bonito para guardar, imprimir ou enviar para alguém.</p>
+        <div class="botoes-relatorio">
+          <button class="btn-relatorio pdf" onclick="exportar('pdf')">
+            <span class="br-emoji">📕</span>
+            <span><strong>Baixar PDF</strong><small>Resumo visual para leitura</small></span>
+          </button>
+          <button class="btn-relatorio excel" onclick="exportar('excel')">
+            <span class="br-emoji">📗</span>
+            <span><strong>Baixar Excel</strong><small>Planilha com todos os dados</small></span>
+          </button>
+        </div>
+        <button class="link-simples" onclick="api().abrir_pasta_relatorios()">📂 Abrir a pasta dos relatórios</button>
+      </div>
+    </section>
+
+    <!-- VIEW: AJUSTES -->
+    <section class="view escondido" id="view-ajustes">
+      <div class="card">
+        <h2>⚙️ Ajustes</h2>
+
+        <h3>Segurança do seu caixa</h3>
+        <div class="linha-2">
+          <label class="bloco-ajuste">
+            <span>Dinheiro inicial</span>
+            <div class="campo-moeda pequeno"><span>R$</span><input id="a-saldo" type="text" inputmode="decimal"></div>
+          </label>
+          <label class="bloco-ajuste">
+            <span>Reserva mínima (piso)</span>
+            <div class="campo-moeda pequeno"><span>R$</span><input id="a-piso" type="text" inputmode="decimal"></div>
+          </label>
+          <label class="bloco-ajuste">
+            <span>Limite de gasto/mês</span>
+            <div class="campo-moeda pequeno"><span>R$</span><input id="a-limite" type="text" inputmode="decimal"></div>
+          </label>
+        </div>
+        <button class="btn-medio" onclick="salvarAjustesGerais()">Salvar</button>
+      </div>
+
+      <div class="card">
+        <h3>Limites por categoria</h3>
+        <p class="sub">Defina quanto quer gastar em cada área. Avisamos quando estiver perto.</p>
+        <div id="lista-orcamentos"></div>
+      </div>
+
+      <div class="card">
+        <h3>🌱 IA local (Ollama)</h3>
+        <div id="ia-config"></div>
+      </div>
+
+      <div class="card">
+        <h3>Categorias</h3>
+        <div class="nova-cat">
+          <input id="nc-nome" class="entrada-texto" placeholder="Nome da nova categoria">
+          <select id="nc-tipo" class="entrada-texto">
+            <option value="saida">Gasto</option>
+            <option value="entrada">Recebimento</option>
+          </select>
+          <button class="btn-medio" onclick="criarCategoria()">Adicionar</button>
+        </div>
+        <div id="lista-categorias" class="chips-cat"></div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- Modal de alertas -->
+<div id="modal-alertas" class="modal-fundo escondido" onclick="if(event.target===this)fecharAlertas()">
+  <div class="modal">
+    <h2>🔔 Avisos</h2>
+    <div id="lista-alertas"></div>
+    <button class="btn-medio" onclick="fecharAlertas()">Entendi</button>
+  </div>
+</div>
+
+<div id="toast" class="toast escondido"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
