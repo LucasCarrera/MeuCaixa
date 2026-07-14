@@ -61,6 +61,7 @@ function configurarNavegacao() {
       document.querySelectorAll('.view').forEach(v => v.classList.add('escondido'));
       document.getElementById('view-' + btn.dataset.view).classList.remove('escondido');
       if (btn.dataset.view === 'ajustes') carregarAjustes();
+      if (btn.dataset.view === 'cartoes') carregarCartoes();
     });
   });
 }
@@ -402,6 +403,172 @@ async function confirmarTransferencia() {
   if (!r.ok) return toast(r.erro || 'Não deu para transferir.');
   fecharModalTransferencia();
   toast('✅ Transferência feita.');
+  await carregarContas();
+  await recarregarTudo();
+}
+
+// ---------------------------------------------------------------- Cartões
+let cartoesCache = [];
+
+async function carregarCartoes() {
+  cartoesCache = await api().listar_cartoes();
+  const mes = mesHoje();
+  const box = document.getElementById('lista-cartoes');
+
+  if (!cartoesCache.length) {
+    box.innerHTML = '<div class="card"><div class="vazio">Nenhum cartão cadastrado ainda.</div></div>';
+    return;
+  }
+
+  const partes = await Promise.all(cartoesCache.map(async c => {
+    const fat = await api().fatura_cartao(c.id, mes);
+    const pctLimite = c.limite > 0 ? Math.min(100, (c.limite_usado / c.limite) * 100) : 0;
+    const corBarra = c.limite_usado > c.limite ? 'var(--red)' : c.cor;
+
+    const parcelasHtml = fat.parcelas.length
+      ? fat.parcelas.map(p => `
+          <div class="trans-item">
+            <div class="trans-icone" style="background:${c.cor}22">${p.categoria_icone}</div>
+            <div class="trans-info">
+              <div class="trans-desc">${escapar(p.descricao)}</div>
+              <div class="trans-meta">${p.categoria_nome} · parcela ${p.numero}/${p.parcelas_total}</div>
+            </div>
+            <div class="trans-valor saida">${fmt(p.valor)}</div>
+          </div>`).join('')
+      : '<div class="vazio">Nenhuma compra nessa fatura.</div>';
+
+    return `
+      <div class="card">
+        <div class="cartao-topo">
+          <span class="cartao-icone">${c.icone}</span>
+          <div class="cartao-info">
+            <h3>${escapar(c.nome)}</h3>
+            <small>Fecha dia ${c.dia_fechamento} · Vence dia ${c.dia_vencimento}</small>
+          </div>
+          <div class="cartao-acoes">
+            <button onclick="abrirModalCartao(${c.id})">✏️</button>
+            <button onclick="removerCartao(${c.id})">🗑️</button>
+          </div>
+        </div>
+
+        <div class="barra-item">
+          <div class="barra-topo">
+            <span class="barra-nome">Limite usado</span>
+            <span class="barra-valor">${fmt(c.limite_usado)} de ${fmt(c.limite)}</span>
+          </div>
+          <div class="barra-trilho"><div class="barra-preench"
+            style="width:${pctLimite}%;background:${corBarra}"></div></div>
+        </div>
+
+        <div class="cartao-fatura-titulo">Fatura de ${formatarMes(mes)}</div>
+        <div class="lista-trans">${parcelasHtml}</div>
+
+        <div class="cartao-rodape">
+          <b>Total da fatura: ${fmt(fat.total)}</b>
+          <div style="display:flex; gap:8px">
+            <button class="btn-medio" style="margin:0" onclick="abrirModalCompraCartao(${c.id})">➕ Nova compra</button>
+            ${!fat.paga && fat.total > 0
+              ? `<button class="btn-medio" style="margin:0" onclick="abrirModalPagarFatura(${c.id}, '${mes}', ${fat.total})">Pagar fatura</button>`
+              : ''}
+          </div>
+        </div>
+      </div>`;
+  }));
+
+  box.innerHTML = partes.join('');
+}
+
+function formatarMes(ym) {
+  const [ano, mes] = ym.split('-');
+  const nomes = ['', 'jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+  return `${nomes[parseInt(mes, 10)]}/${ano}`;
+}
+
+function abrirModalCartao(id) {
+  const c = id ? cartoesCache.find(c => c.id === id) : null;
+  document.getElementById('mca-titulo').textContent = c ? 'Editar cartão' : 'Novo cartão';
+  document.getElementById('mca-id').value = c ? c.id : '';
+  document.getElementById('mca-nome').value = c ? c.nome : '';
+  document.getElementById('mca-limite').value = c ? c.limite.toFixed(2).replace('.', ',') : '';
+  document.getElementById('mca-fechamento').value = c ? c.dia_fechamento : 1;
+  document.getElementById('mca-vencimento').value = c ? c.dia_vencimento : 10;
+  document.getElementById('modal-cartao').classList.remove('escondido');
+}
+function fecharModalCartao() { document.getElementById('modal-cartao').classList.add('escondido'); }
+
+async function salvarCartaoModal() {
+  const id = document.getElementById('mca-id').value || null;
+  const nome = document.getElementById('mca-nome').value.trim();
+  const limite = document.getElementById('mca-limite').value || '0';
+  const fechamento = document.getElementById('mca-fechamento').value;
+  const vencimento = document.getElementById('mca-vencimento').value;
+  if (!nome) return toast('Dê um nome pro cartão.');
+
+  const r = await api().salvar_cartao(nome, limite, fechamento, vencimento, '#6B4FBB', '💳', id);
+  if (!r.ok) return toast(r.erro || 'Não deu para salvar.');
+  fecharModalCartao();
+  toast('✅ Cartão salvo.');
+  await carregarCartoes();
+}
+
+async function removerCartao(id) {
+  const r = await api().excluir_cartao(id);
+  if (!r.ok) return toast(r.erro);
+  toast('Cartão removido.');
+  await carregarCartoes();
+}
+
+function abrirModalCompraCartao(cartaoId) {
+  document.getElementById('mcc-cartao-id').value = cartaoId;
+  document.getElementById('mcc-descricao').value = '';
+  document.getElementById('mcc-valor').value = '';
+  document.getElementById('mcc-parcelas').value = 1;
+  document.getElementById('mcc-data').value = hoje();
+  const doTipoSaida = categorias.filter(c => c.tipo === 'saida');
+  document.getElementById('mcc-categoria').innerHTML =
+    doTipoSaida.map(c => `<option value="${c.id}">${rotuloCategoria(c)}</option>`).join('');
+  document.getElementById('modal-compra-cartao').classList.remove('escondido');
+}
+function fecharModalCompraCartao() { document.getElementById('modal-compra-cartao').classList.add('escondido'); }
+
+async function confirmarCompraCartao() {
+  const cartaoId = document.getElementById('mcc-cartao-id').value;
+  const descricao = document.getElementById('mcc-descricao').value.trim();
+  const categoria = document.getElementById('mcc-categoria').value;
+  const valor = document.getElementById('mcc-valor').value;
+  const parcelas = document.getElementById('mcc-parcelas').value || 1;
+  const data = document.getElementById('mcc-data').value || hoje();
+  if (!descricao) return toast('Descreva a compra.');
+  if (!valor) return toast('Informe o valor.');
+
+  const r = await api().registrar_compra_cartao(cartaoId, descricao, categoria, valor, parcelas, data);
+  if (!r.ok) return toast(r.erro || 'Não deu para registrar.');
+  fecharModalCompraCartao();
+  toast('✅ Compra registrada.');
+  await carregarCartoes();
+}
+
+function abrirModalPagarFatura(cartaoId, mes, totalReais) {
+  document.getElementById('mpf-cartao-id').value = cartaoId;
+  document.getElementById('mpf-mes').value = mes;
+  document.getElementById('mpf-resumo').textContent =
+    `Total da fatura de ${formatarMes(mes)}: ${fmt(totalReais)}`;
+  document.getElementById('mpf-conta').innerHTML =
+    contas.map(c => `<option value="${c.id}">${c.icone} ${c.nome}</option>`).join('');
+  document.getElementById('modal-pagar-fatura').classList.remove('escondido');
+}
+function fecharModalPagarFatura() { document.getElementById('modal-pagar-fatura').classList.add('escondido'); }
+
+async function confirmarPagarFatura() {
+  const cartaoId = document.getElementById('mpf-cartao-id').value;
+  const mes = document.getElementById('mpf-mes').value;
+  const conta = document.getElementById('mpf-conta').value;
+
+  const r = await api().pagar_fatura_cartao(cartaoId, mes, conta);
+  if (!r.ok) return toast(r.erro || 'Não deu para pagar a fatura.');
+  fecharModalPagarFatura();
+  toast('✅ Fatura paga.');
+  await carregarCartoes();
   await carregarContas();
   await recarregarTudo();
 }

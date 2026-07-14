@@ -214,6 +214,20 @@ nav { display: flex; flex-direction: column; gap: 3px; flex: 1; }
 .conta-tipo { font-size: 12.5px; color: var(--muted); }
 .conta-saldo { font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .nova-cat { display: grid; grid-template-columns: 2fr 1fr auto; gap: 10px; margin-bottom: 16px; }
+
+/* ---------- Cartões ---------- */
+.cartao-topo { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+.cartao-icone { font-size: 26px; width: 42px; text-align: center; }
+.cartao-info { flex: 1; min-width: 0; }
+.cartao-info h3 { margin: 0; font-size: 16.5px; }
+.cartao-info small { color: var(--muted); font-size: 12.5px; }
+.cartao-acoes { display: flex; gap: 4px; }
+.cartao-acoes button { background: none; border: none; color: var(--muted); cursor: pointer;
+  font-size: 15px; padding: 6px 8px; border-radius: 8px; }
+.cartao-acoes button:hover { background: var(--surface-2); }
+.cartao-rodape { display: flex; justify-content: space-between; align-items: center;
+  margin-top: 14px; gap: 10px; flex-wrap: wrap; }
+.cartao-fatura-titulo { font-size: 14.5px; font-weight: 600; margin: 18px 0 8px; }
 .chips-cat { display: flex; flex-wrap: wrap; gap: 8px; }
 .chip { display: inline-flex; align-items: center; gap: 6px; background: var(--surface-2);
   border: 1px solid var(--line); border-radius: 20px; padding: 6px 12px; font-size: 13.5px; }

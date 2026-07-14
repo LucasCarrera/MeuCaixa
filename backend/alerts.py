@@ -1,18 +1,20 @@
 """Motor de alertas.
 
-Verifica quatro situações e devolve uma lista de avisos em linguagem simples:
+Verifica estas situações e devolve uma lista de avisos em linguagem simples:
 1. Estourou o orçamento de uma categoria (ou está quase).
 2. Passou do limite geral de gastos do mês.
 3. O caixa caiu abaixo do piso que o usuário definiu.
 4. Um gasto isolado fugiu muito do padrão daquela categoria.
+5. A fatura de um cartão está vencendo em breve (ou já venceu) e não foi paga.
 
 Os níveis são: info | atencao | perigo.
 """
 
-from datetime import date
+from datetime import date, datetime
 from statistics import median
 from .db import get_connection, agora
 from . import repository as repo
+from . import cartoes
 from .logger import get_logger
 
 log = get_logger(__name__)
@@ -109,6 +111,35 @@ def avaliar(mes=None, ultima_transacao=None):
         if anomalia:
             alertas.append(anomalia)
 
+    # 5. Faturas de cartão vencendo ou vencidas
+    alertas.extend(_alertas_cartoes())
+
+    return alertas
+
+
+def _alertas_cartoes():
+    alertas = []
+    hoje = date.today()
+    for c in cartoes.listar_cartoes():
+        mes = cartoes.proxima_fatura_em_aberto(c["id"])
+        if not mes:
+            continue
+        venc_str = cartoes.data_vencimento_fatura(mes, c["dia_vencimento"])
+        venc = datetime.strptime(venc_str, "%Y-%m-%d").date()
+        dias = (venc - hoje).days
+        if dias < 0:
+            alertas.append({
+                "tipo": "cartao_vencido",
+                "nivel": "perigo",
+                "mensagem": f"A fatura do {c['nome']} venceu em {venc.strftime('%d/%m')} "
+                            f"e ainda não foi paga.",
+            })
+        elif dias <= 5:
+            alertas.append({
+                "tipo": "cartao_vencendo",
+                "nivel": "atencao",
+                "mensagem": f"A fatura do {c['nome']} vence em {venc.strftime('%d/%m')}.",
+            })
     return alertas
 
 

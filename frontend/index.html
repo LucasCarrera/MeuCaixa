@@ -57,6 +57,7 @@
       <button class="nav-item ativo" data-view="inicio"><span>🏠</span> Início</button>
       <button class="nav-item" data-view="lancar"><span>➕</span> Lançar</button>
       <button class="nav-item" data-view="historico"><span>📋</span> Histórico</button>
+      <button class="nav-item" data-view="cartoes"><span>💳</span> Cartões</button>
       <button class="nav-item" data-view="assistente"><span>💬</span> Assistente</button>
       <button class="nav-item" data-view="relatorios"><span>📄</span> Relatórios</button>
       <button class="nav-item" data-view="ajustes"><span>⚙️</span> Ajustes</button>
@@ -171,6 +172,18 @@
         </div>
         <div id="lista-historico" class="lista-trans"></div>
       </div>
+    </section>
+
+    <!-- VIEW: CARTÕES -->
+    <section class="view escondido" id="view-cartoes">
+      <div class="card" style="display:flex; justify-content:space-between; align-items:center">
+        <div>
+          <h2>💳 Cartões de crédito</h2>
+          <p class="sub">Compras no cartão só saem do seu caixa quando você paga a fatura.</p>
+        </div>
+        <button class="btn-medio" style="margin:0" onclick="abrirModalCartao()">➕ Novo cartão</button>
+      </div>
+      <div id="lista-cartoes"></div>
     </section>
 
     <!-- VIEW: ASSISTENTE -->
@@ -309,6 +322,69 @@
     <label class="rotulo-campo">Data</label>
     <input id="tr-data" type="date" class="entrada-texto">
     <button class="btn-grande" onclick="confirmarTransferencia()">Transferir</button>
+  </div>
+</div>
+
+<!-- Modal de cartão (criar/editar) -->
+<div id="modal-cartao" class="modal-fundo escondido" onclick="if(event.target===this)fecharModalCartao()">
+  <div class="modal">
+    <h2 id="mca-titulo">Novo cartão</h2>
+    <input type="hidden" id="mca-id">
+    <label class="rotulo-campo">Nome</label>
+    <input id="mca-nome" class="entrada-texto" placeholder="Ex: Nubank, Inter...">
+    <label class="rotulo-campo">Limite</label>
+    <div class="campo-moeda pequeno"><span>R$</span>
+      <input id="mca-limite" type="text" inputmode="decimal" placeholder="0,00"></div>
+    <div class="linha-2">
+      <div>
+        <label class="rotulo-campo">Dia de fechamento</label>
+        <input id="mca-fechamento" type="number" min="1" max="28" class="entrada-texto" value="1">
+      </div>
+      <div>
+        <label class="rotulo-campo">Dia de vencimento</label>
+        <input id="mca-vencimento" type="number" min="1" max="28" class="entrada-texto" value="10">
+      </div>
+    </div>
+    <button class="btn-grande" onclick="salvarCartaoModal()">Salvar</button>
+  </div>
+</div>
+
+<!-- Modal de nova compra no cartão -->
+<div id="modal-compra-cartao" class="modal-fundo escondido" onclick="if(event.target===this)fecharModalCompraCartao()">
+  <div class="modal">
+    <h2>Nova compra</h2>
+    <input type="hidden" id="mcc-cartao-id">
+    <label class="rotulo-campo">Descrição</label>
+    <input id="mcc-descricao" class="entrada-texto" placeholder="Ex: Notebook, mercado...">
+    <label class="rotulo-campo">Categoria</label>
+    <select id="mcc-categoria" class="entrada-texto"></select>
+    <div class="linha-2">
+      <div>
+        <label class="rotulo-campo">Valor total</label>
+        <div class="campo-moeda pequeno"><span>R$</span>
+          <input id="mcc-valor" type="text" inputmode="decimal" placeholder="0,00"></div>
+      </div>
+      <div>
+        <label class="rotulo-campo">Parcelas</label>
+        <input id="mcc-parcelas" type="number" min="1" max="36" value="1" class="entrada-texto">
+      </div>
+    </div>
+    <label class="rotulo-campo">Data da compra</label>
+    <input id="mcc-data" type="date" class="entrada-texto">
+    <button class="btn-grande" onclick="confirmarCompraCartao()">Registrar compra</button>
+  </div>
+</div>
+
+<!-- Modal de pagar fatura -->
+<div id="modal-pagar-fatura" class="modal-fundo escondido" onclick="if(event.target===this)fecharModalPagarFatura()">
+  <div class="modal">
+    <h2>Pagar fatura</h2>
+    <input type="hidden" id="mpf-cartao-id">
+    <input type="hidden" id="mpf-mes">
+    <p class="sub" id="mpf-resumo"></p>
+    <label class="rotulo-campo">Pagar com qual conta?</label>
+    <select id="mpf-conta" class="entrada-texto"></select>
+    <button class="btn-grande" onclick="confirmarPagarFatura()">Confirmar pagamento</button>
   </div>
 </div>
 

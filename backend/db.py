@@ -75,6 +75,41 @@ CREATE TABLE IF NOT EXISTS transferencias (
     FOREIGN KEY (conta_destino_id) REFERENCES contas(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS cartoes (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    nome            TEXT NOT NULL UNIQUE,
+    limite_cents    INTEGER NOT NULL DEFAULT 0,
+    dia_fechamento  INTEGER NOT NULL,                 -- 1-28
+    dia_vencimento  INTEGER NOT NULL,                 -- 1-28
+    cor             TEXT DEFAULT '#6B4FBB',
+    icone           TEXT DEFAULT '💳',
+    criado_em       TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS compras_cartao (
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    cartao_id          INTEGER NOT NULL,
+    descricao          TEXT NOT NULL,
+    categoria_id       INTEGER,
+    valor_total_cents  INTEGER NOT NULL,
+    parcelas_total     INTEGER NOT NULL DEFAULT 1,
+    criado_em          TEXT NOT NULL,
+    FOREIGN KEY (cartao_id) REFERENCES cartoes(id) ON DELETE CASCADE,
+    FOREIGN KEY (categoria_id) REFERENCES categorias(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS parcelas_cartao (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    compra_id   INTEGER NOT NULL,
+    cartao_id   INTEGER NOT NULL,
+    numero      INTEGER NOT NULL,
+    valor_cents INTEGER NOT NULL,
+    mes_fatura  TEXT NOT NULL,                        -- YYYY-MM
+    paga        INTEGER DEFAULT 0,
+    FOREIGN KEY (compra_id) REFERENCES compras_cartao(id) ON DELETE CASCADE,
+    FOREIGN KEY (cartao_id) REFERENCES cartoes(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS orcamentos (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     categoria_id  INTEGER UNIQUE,                   -- NULL = orçamento geral do mês
@@ -112,6 +147,8 @@ CREATE INDEX IF NOT EXISTS idx_transacoes_data   ON transacoes(data);
 CREATE INDEX IF NOT EXISTS idx_transacoes_cat    ON transacoes(categoria_id);
 CREATE INDEX IF NOT EXISTS idx_transacoes_conta  ON transacoes(conta_id);
 CREATE INDEX IF NOT EXISTS idx_categorias_pai    ON categorias(categoria_pai_id);
+CREATE INDEX IF NOT EXISTS idx_parcelas_cartao   ON parcelas_cartao(cartao_id, mes_fatura);
+CREATE INDEX IF NOT EXISTS idx_parcelas_compra   ON parcelas_cartao(compra_id);
 """
 
 CATEGORIAS_PADRAO = [

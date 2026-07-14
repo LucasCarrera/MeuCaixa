@@ -15,6 +15,7 @@ from . import categorizer
 from . import alerts
 from . import reports
 from . import llm
+from . import cartoes
 from .logger import get_logger
 
 log = get_logger(__name__)
@@ -52,8 +53,10 @@ class Api:
     def get_dashboard(self, mes=None):
         mes = mes or date.today().strftime("%Y-%m")
         resumo = repo.resumo_mes(mes)
-        # só avalia para exibir; a gravação no sino acontece ao lançar transações
         avaliados = alerts.avaliar(mes)
+        # grava no sino também aqui: alertas como fatura vencendo não dependem
+        # de lançar uma transação para aparecer (gravar_alertas já deduplica)
+        alerts.gravar_alertas(avaliados)
         return {
             "mes": mes,
             "entradas": _reais(resumo["entradas_cents"]),
@@ -275,6 +278,91 @@ class Api:
     def abrir_pasta_relatorios(self):
         _abrir_arquivo(reports.REL_DIR)
         return {"ok": True}
+
+    # -------------------- Cartões de crédito --------------------
+    def listar_cartoes(self):
+        return [
+            {"id": c["id"], "nome": c["nome"], "limite": _reais(c["limite_cents"]),
+             "dia_fechamento": c["dia_fechamento"], "dia_vencimento": c["dia_vencimento"],
+             "cor": c["cor"], "icone": c["icone"],
+             "limite_usado": _reais(c["limite_usado_cents"]),
+             "limite_disponivel": _reais(c["limite_disponivel_cents"])}
+            for c in cartoes.listar_cartoes()
+        ]
+
+    def salvar_cartao(self, nome, limite, dia_fechamento, dia_vencimento,
+                      cor="#6B4FBB", icone="💳", cartao_id=None):
+        if not nome or not nome.strip():
+            return {"ok": False, "erro": "Dê um nome para o cartão."}
+        dia_f, dia_v = int(dia_fechamento), int(dia_vencimento)
+        if not (1 <= dia_f <= 28) or not (1 <= dia_v <= 28):
+            return {"ok": False, "erro": "Use um dia entre 1 e 28 para fechamento/vencimento."}
+        cents = _cents(limite)
+        try:
+            if cartao_id:
+                cartao_id = int(cartao_id)
+                cartoes.atualizar_cartao(cartao_id, nome=nome, limite_cents=cents,
+                                          dia_fechamento=dia_f, dia_vencimento=dia_v, cor=cor, icone=icone)
+                log.info("Cartão #%s atualizado: %s", cartao_id, nome)
+                return {"ok": True, "id": cartao_id}
+            cid = cartoes.criar_cartao(nome, cents, dia_f, dia_v, cor, icone)
+            log.info("Cartão #%s criado: %s", cid, nome)
+            return {"ok": True, "id": cid}
+        except Exception:
+            log.warning("Falha ao salvar cartão %r", nome, exc_info=True)
+            return {"ok": False, "erro": "Já existe um cartão com esse nome."}
+
+    def excluir_cartao(self, cartao_id):
+        cartao_id = int(cartao_id)
+        if cartoes.cartao_tem_compras(cartao_id):
+            return {"ok": False, "erro":
+                     "Esse cartão tem compras vinculadas. Apague-as antes de remover o cartão."}
+        cartoes.excluir_cartao(cartao_id)
+        log.info("Cartão #%s excluído", cartao_id)
+        return {"ok": True}
+
+    def registrar_compra_cartao(self, cartao_id, descricao, categoria_id, valor_total,
+                                parcelas_total, data_compra=None):
+        if not descricao or not descricao.strip():
+            return {"ok": False, "erro": "Descreva a compra."}
+        cents = _cents(valor_total)
+        if cents <= 0:
+            return {"ok": False, "erro": "Informe um valor maior que zero."}
+        cat_id = int(categoria_id) if categoria_id else None
+        compra_id = cartoes.criar_compra(int(cartao_id), descricao, cat_id, cents, parcelas_total, data_compra)
+        if compra_id is None:
+            return {"ok": False, "erro": "Cartão não encontrado."}
+        log.info("Compra #%s registrada no cartão #%s", compra_id, cartao_id)
+        return {"ok": True, "id": compra_id}
+
+    def listar_compras_cartao(self, cartao_id):
+        return [
+            {"id": c["id"], "descricao": c["descricao"], "valor_total": _reais(c["valor_total_cents"]),
+             "parcelas_total": c["parcelas_total"],
+             "categoria_nome": c.get("categoria_nome") or "Sem categoria",
+             "categoria_icone": c.get("categoria_icone") or "📦"}
+            for c in cartoes.listar_compras(int(cartao_id))
+        ]
+
+    def fatura_cartao(self, cartao_id, mes=None):
+        f = cartoes.fatura(int(cartao_id), mes)
+        return {
+            "mes": f["mes"], "total": _reais(f["total_cents"]), "paga": f["paga"],
+            "parcelas": [
+                {"id": p["id"], "descricao": p["descricao"], "numero": p["numero"],
+                 "parcelas_total": p["parcelas_total"], "valor": _reais(p["valor_cents"]),
+                 "paga": bool(p["paga"]), "categoria_nome": p.get("categoria_nome") or "Sem categoria",
+                 "categoria_icone": p.get("categoria_icone") or "📦"}
+                for p in f["parcelas"]
+            ],
+        }
+
+    def pagar_fatura_cartao(self, cartao_id, mes, conta_id):
+        r = cartoes.pagar_fatura(int(cartao_id), mes, int(conta_id))
+        if r is None:
+            return {"ok": False, "erro": "Não há fatura em aberto nesse mês."}
+        log.info("Fatura do cartão #%s (%s) paga via conta #%s", cartao_id, mes, conta_id)
+        return {"ok": True, "total": _reais(r["total_cents"])}
 
     # -------------------- IA local --------------------
     def ia_status(self):
