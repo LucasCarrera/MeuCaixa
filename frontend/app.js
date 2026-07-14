@@ -250,10 +250,16 @@ function fecharAlertas() { document.getElementById('modal-alertas').classList.ad
 
 // ---------------------------------------------------------------- Relatórios
 async function exportar(tipo) {
+  const inicio = document.getElementById('rel-inicio').value || null;
+  const fim = document.getElementById('rel-fim').value || null;
+  if ((inicio && !fim) || (!inicio && fim)) return toast('Preencha as duas datas (ou nenhuma).');
+  if (inicio && fim && inicio > fim) return toast('A data inicial vem antes da final.');
+
   toast('Gerando relatório...');
-  const r = tipo === 'pdf' ? await api().exportar_pdf(mesSelecionado())
-                           : await api().exportar_excel(mesSelecionado());
+  const r = tipo === 'pdf' ? await api().exportar_pdf(mesSelecionado(), inicio, fim)
+                           : await api().exportar_excel(mesSelecionado(), inicio, fim);
   if (r.ok) toast('✅ Pronto! O arquivo foi aberto.');
+  else toast(r.erro || 'Não deu para gerar.');
 }
 
 // ---------------------------------------------------------------- Assistente

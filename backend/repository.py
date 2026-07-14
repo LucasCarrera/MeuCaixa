@@ -221,7 +221,8 @@ def adicionar_transacao(data_str, descricao, valor_cents, tipo, categoria_id, co
         conn.close()
 
 
-def listar_transacoes(mes=None, categoria_id=None, tipo=None, busca=None, conta_id=None, limite=None):
+def listar_transacoes(mes=None, categoria_id=None, tipo=None, busca=None, conta_id=None,
+                       data_inicio=None, data_fim=None, limite=None):
     conn = get_connection()
     try:
         sql = (
@@ -235,6 +236,12 @@ def listar_transacoes(mes=None, categoria_id=None, tipo=None, busca=None, conta_
         if mes:
             sql += " AND substr(t.data, 1, 7) = ?"
             params.append(mes)
+        if data_inicio:
+            sql += " AND t.data >= ?"
+            params.append(data_inicio)
+        if data_fim:
+            sql += " AND t.data <= ?"
+            params.append(data_fim)
         if categoria_id:
             sql += " AND t.categoria_id = ?"
             params.append(categoria_id)
@@ -320,28 +327,36 @@ def caixa_atual_cents():
 def resumo_mes(mes=None):
     """Retorna totais do mês e quebra por categoria (só saídas)."""
     mes = mes or _mes_atual()
+    resumo = resumo_periodo(f"{mes}-01", f"{mes}-31")
+    resumo["mes"] = mes
+    return resumo
+
+
+def resumo_periodo(data_inicio, data_fim):
+    """Como resumo_mes, mas para um intervalo de datas qualquer (inclusive)."""
     conn = get_connection()
     try:
         tot = conn.execute(
             "SELECT "
             "COALESCE(SUM(CASE WHEN tipo='entrada' THEN valor_cents ELSE 0 END),0) AS entradas, "
             "COALESCE(SUM(CASE WHEN tipo='saida'   THEN valor_cents ELSE 0 END),0) AS saidas "
-            "FROM transacoes WHERE substr(data,1,7) = ?",
-            (mes,),
+            "FROM transacoes WHERE data BETWEEN ? AND ?",
+            (data_inicio, data_fim),
         ).fetchone()
 
         por_cat = conn.execute(
             "SELECT c.id, c.nome, c.icone, c.cor, SUM(t.valor_cents) AS total "
             "FROM transacoes t JOIN categorias c ON c.id = t.categoria_id "
-            "WHERE t.tipo='saida' AND substr(t.data,1,7) = ? "
+            "WHERE t.tipo='saida' AND t.data BETWEEN ? AND ? "
             "GROUP BY c.id ORDER BY total DESC",
-            (mes,),
+            (data_inicio, data_fim),
         ).fetchall()
 
         entradas = tot["entradas"]
         saidas = tot["saidas"]
         return {
-            "mes": mes,
+            "data_inicio": data_inicio,
+            "data_fim": data_fim,
             "entradas_cents": entradas,
             "saidas_cents": saidas,
             "saldo_mes_cents": entradas - saidas,

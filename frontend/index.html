@@ -253,8 +253,19 @@
     <!-- VIEW: RELATÓRIOS -->
     <section class="view escondido" id="view-relatorios">
       <div class="card">
-        <h2>📄 Relatórios do mês</h2>
+        <h2>📄 Relatórios</h2>
         <p class="sub">Gere um resumo bonito para guardar, imprimir ou enviar para alguém.</p>
+        <div class="linha-2" style="margin-top:14px">
+          <div>
+            <label class="rotulo-campo" style="margin-top:0">De (opcional)</label>
+            <input id="rel-inicio" type="date" class="entrada-texto">
+          </div>
+          <div>
+            <label class="rotulo-campo" style="margin-top:0">Até (opcional)</label>
+            <input id="rel-fim" type="date" class="entrada-texto">
+          </div>
+        </div>
+        <p class="sub" style="margin-top:6px">Deixe as datas em branco para usar o mês selecionado lá em cima.</p>
         <div class="botoes-relatorio">
           <button class="btn-relatorio pdf" onclick="exportar('pdf')">
             <span class="br-emoji">📕</span>

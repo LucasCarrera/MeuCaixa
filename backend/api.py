@@ -274,21 +274,21 @@ class Api:
         return {"ok": True}
 
     # -------------------- Relatórios --------------------
-    def exportar_excel(self, mes=None):
+    def exportar_excel(self, mes=None, data_inicio=None, data_fim=None):
         try:
-            caminho = reports.exportar_excel(mes)
+            caminho = reports.exportar_excel(mes, data_inicio, data_fim)
         except Exception:
-            log.exception("Falha ao exportar Excel do mês %s", mes)
+            log.exception("Falha ao exportar Excel (mes=%s, periodo=%s..%s)", mes, data_inicio, data_fim)
             return {"ok": False, "erro": "Não consegui gerar o Excel. Tente novamente."}
         log.info("Excel exportado: %s", caminho)
         _abrir_arquivo(caminho)
         return {"ok": True, "caminho": caminho}
 
-    def exportar_pdf(self, mes=None):
+    def exportar_pdf(self, mes=None, data_inicio=None, data_fim=None):
         try:
-            caminho = reports.exportar_pdf(mes)
+            caminho = reports.exportar_pdf(mes, data_inicio, data_fim)
         except Exception:
-            log.exception("Falha ao exportar PDF do mês %s", mes)
+            log.exception("Falha ao exportar PDF (mes=%s, periodo=%s..%s)", mes, data_inicio, data_fim)
             return {"ok": False, "erro": "Não consegui gerar o PDF. Tente novamente."}
         log.info("PDF exportado: %s", caminho)
         _abrir_arquivo(caminho)

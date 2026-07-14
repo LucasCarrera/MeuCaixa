@@ -32,19 +32,41 @@ def _garantir_dir():
     os.makedirs(REL_DIR, exist_ok=True)
 
 
+def _fmt_data_br(iso):
+    a, m, d = iso.split("-")
+    return f"{d}/{m}/{a}"
+
+
+def _resolver_periodo(mes=None, data_inicio=None, data_fim=None):
+    """Decide entre relatório mensal e por período livre.
+
+    Retorna (resumo, transacoes, rotulo, sufixo_arquivo).
+    """
+    if data_inicio and data_fim:
+        resumo = repo.resumo_periodo(data_inicio, data_fim)
+        transacoes = repo.listar_transacoes(data_inicio=data_inicio, data_fim=data_fim)
+        rotulo = f"{_fmt_data_br(data_inicio)} a {_fmt_data_br(data_fim)}"
+        sufixo = f"{data_inicio}_a_{data_fim}"
+    else:
+        mes = mes or date.today().strftime("%Y-%m")
+        resumo = repo.resumo_mes(mes)
+        transacoes = repo.listar_transacoes(mes=mes)
+        rotulo = _nome_mes(mes)
+        sufixo = mes
+    return resumo, transacoes, rotulo, sufixo
+
+
 # ----------------------------------------------------------------------------
 # EXCEL
 # ----------------------------------------------------------------------------
-def exportar_excel(mes=None):
+def exportar_excel(mes=None, data_inicio=None, data_fim=None):
     from openpyxl import Workbook
     from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
     from openpyxl.utils import get_column_letter
     from openpyxl.chart import BarChart, Reference
 
-    mes = mes or date.today().strftime("%Y-%m")
     _garantir_dir()
-    resumo = repo.resumo_mes(mes)
-    transacoes = repo.listar_transacoes(mes=mes)
+    resumo, transacoes, rotulo, sufixo = _resolver_periodo(mes, data_inicio, data_fim)
 
     verde = "1B7A5A"
     cabec_fill = PatternFill("solid", fgColor=verde)
@@ -59,7 +81,7 @@ def exportar_excel(mes=None):
     ws.title = "Resumo"
     ws["A1"] = "MeuCaixa — Relatório"
     ws["A1"].font = titulo_font
-    ws["A2"] = _nome_mes(mes)
+    ws["A2"] = rotulo
     ws["A2"].font = Font(size=12, color="6B7772")
 
     linhas_resumo = [
@@ -132,7 +154,7 @@ def exportar_excel(mes=None):
     for i, w in enumerate(larguras, start=1):
         ws2.column_dimensions[get_column_letter(i)].width = w
 
-    caminho = os.path.join(REL_DIR, f"MeuCaixa_{mes}.xlsx")
+    caminho = os.path.join(REL_DIR, f"MeuCaixa_{sufixo}.xlsx")
     wb.save(caminho)
     return caminho
 
@@ -140,7 +162,7 @@ def exportar_excel(mes=None):
 # ----------------------------------------------------------------------------
 # PDF
 # ----------------------------------------------------------------------------
-def exportar_pdf(mes=None):
+def exportar_pdf(mes=None, data_inicio=None, data_fim=None):
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.units import cm
     from reportlab.lib import colors
@@ -149,16 +171,14 @@ def exportar_pdf(mes=None):
         SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
     )
 
-    mes = mes or date.today().strftime("%Y-%m")
     _garantir_dir()
-    resumo = repo.resumo_mes(mes)
-    transacoes = repo.listar_transacoes(mes=mes)
+    resumo, transacoes, rotulo, sufixo = _resolver_periodo(mes, data_inicio, data_fim)
 
     verde = colors.HexColor("#1B7A5A")
     cinza = colors.HexColor("#6B7772")
     claro = colors.HexColor("#EEF2EF")
 
-    caminho = os.path.join(REL_DIR, f"MeuCaixa_{mes}.pdf")
+    caminho = os.path.join(REL_DIR, f"MeuCaixa_{sufixo}.pdf")
     doc = SimpleDocTemplate(caminho, pagesize=A4,
                             topMargin=2*cm, bottomMargin=2*cm,
                             leftMargin=2*cm, rightMargin=2*cm)
@@ -170,7 +190,7 @@ def exportar_pdf(mes=None):
 
     el = []
     el.append(Paragraph("MeuCaixa — Relatório", h1))
-    el.append(Paragraph(_nome_mes(mes), sub))
+    el.append(Paragraph(rotulo, sub))
     el.append(Spacer(1, 0.6*cm))
 
     # cartões de resumo
