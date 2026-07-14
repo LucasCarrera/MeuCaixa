@@ -214,6 +214,8 @@ nav { display: flex; flex-direction: column; gap: 3px; flex: 1; }
 .conta-tipo { font-size: 12.5px; color: var(--muted); }
 .conta-saldo { font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .nova-cat { display: grid; grid-template-columns: 2fr 1fr auto; gap: 10px; margin-bottom: 16px; }
+.nova-conta-pagar { display: grid; grid-template-columns: 2fr 1fr 1fr 1.2fr auto; gap: 10px; margin-top: 14px; align-items: center; }
+.nova-recorrencia { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 1.2fr auto; gap: 10px; margin-top: 14px; align-items: center; }
 
 /* ---------- Cartões ---------- */
 .cartao-topo { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
@@ -291,7 +293,8 @@ nav { display: flex; flex-direction: column; gap: 3px; flex: 1; }
   font-size: 14.5px; font-weight: 500; z-index: 100; box-shadow: 0 10px 30px rgba(0,0,0,.2); }
 
 @media (max-width: 720px) {
-  .cards-3, .grid-2, .linha-2, .linha-3, .filtros, .botoes-relatorio, .nova-cat { grid-template-columns: 1fr; }
+  .cards-3, .grid-2, .linha-2, .linha-3, .filtros, .botoes-relatorio, .nova-cat,
+  .nova-conta-pagar, .nova-recorrencia { grid-template-columns: 1fr; }
   .sidebar { width: 68px; } .logo-nome, .nav-item { font-size: 0; }
   .nav-item span { font-size: 20px; } .ia-badge { font-size: 0; }
 }

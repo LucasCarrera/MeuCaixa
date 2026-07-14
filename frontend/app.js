@@ -102,6 +102,21 @@ async function carregarDashboard() {
   document.getElementById('lista-ultimas').innerHTML =
     d.ultimas.length ? d.ultimas.map(t => itemTransacao(t, false)).join('')
                      : '<div class="vazio">Sem movimentações ainda.</div>';
+
+  document.getElementById('lista-vencimentos').innerHTML =
+    d.proximos_vencimentos.length ? d.proximos_vencimentos.map(cp => `
+      <div class="trans-item">
+        <div class="trans-icone" style="background:${cp.vencida ? 'var(--red-soft)' : 'var(--surface-2)'}">
+          ${cp.tipo === 'entrada' ? '📥' : '📤'}</div>
+        <div class="trans-info">
+          <div class="trans-desc">${escapar(cp.descricao)}</div>
+          <div class="trans-meta" ${cp.vencida ? 'style="color:var(--red)"' : ''}>
+            ${cp.vencida ? '⚠️ venceu em' : 'vence em'} ${formatarData(cp.vencimento)}</div>
+        </div>
+        <div class="trans-valor ${cp.tipo}">${cp.tipo === 'entrada' ? '+' : '−'} ${fmt(cp.valor)}</div>
+        <button class="trans-excluir" title="Efetivar" onclick="abrirModalPagarConta(${cp.id})">✅</button>
+      </div>`).join('')
+    : '<div class="vazio">Nada por vir. Cadastre contas e recorrências em Ajustes.</div>';
 }
 
 function itemTransacao(t, comExcluir = true) {
@@ -265,6 +280,8 @@ async function carregarAjustes() {
   document.getElementById('a-limite').value = aj.limite_mensal ? aj.limite_mensal.toFixed(2).replace('.', ',') : '';
 
   await carregarContas();
+  await carregarContasPagar();
+  await carregarRecorrencias();
 
   // orçamentos
   const orcs = await api().listar_orcamentos();
@@ -406,6 +423,127 @@ async function confirmarTransferencia() {
   toast('✅ Transferência feita.');
   await carregarContas();
   await recarregarTudo();
+}
+
+// ------------------------------------------- Contas a pagar e recorrências
+let contasPagarCache = [];
+
+const FREQ_LABEL = { semanal: 'toda semana', mensal: 'todo mês', anual: 'todo ano' };
+
+async function carregarContasPagar() {
+  contasPagarCache = await api().listar_contas_pagar();
+  const box = document.getElementById('lista-contas-pagar');
+  box.innerHTML = contasPagarCache.length ? contasPagarCache.map(cp => `
+    <div class="trans-item">
+      <div class="trans-icone" style="background:${cp.vencida ? 'var(--red-soft)' : 'var(--surface-2)'}">
+        ${cp.tipo === 'entrada' ? '📥' : '📤'}</div>
+      <div class="trans-info">
+        <div class="trans-desc">${escapar(cp.descricao)}</div>
+        <div class="trans-meta" ${cp.vencida ? 'style="color:var(--red)"' : ''}>
+          ${cp.vencida ? '⚠️ venceu em' : 'vence em'} ${formatarData(cp.vencimento)}</div>
+      </div>
+      <div class="trans-valor ${cp.tipo}">${cp.tipo === 'entrada' ? '+' : '−'} ${fmt(cp.valor)}</div>
+      <button class="trans-excluir" title="Efetivar" onclick="abrirModalPagarConta(${cp.id})">✅</button>
+      <button class="trans-excluir" onclick="removerContaPagar(${cp.id})">🗑️</button>
+    </div>`).join('')
+  : '<div class="vazio">Nenhuma conta pendente.</div>';
+}
+
+async function criarContaPagar() {
+  const descricao = document.getElementById('ncp-descricao').value.trim();
+  const valor = document.getElementById('ncp-valor').value;
+  const tipo = document.getElementById('ncp-tipo').value;
+  const vencimento = document.getElementById('ncp-vencimento').value;
+  if (!descricao) return toast('Descreva a conta.');
+  if (!valor) return toast('Informe o valor.');
+  if (!vencimento) return toast('Informe o vencimento.');
+
+  const r = await api().criar_conta_pagar(descricao, valor, tipo, vencimento);
+  if (!r.ok) return toast(r.erro);
+  document.getElementById('ncp-descricao').value = '';
+  document.getElementById('ncp-valor').value = '';
+  document.getElementById('ncp-vencimento').value = '';
+  toast('✅ Conta adicionada.');
+  await carregarContasPagar();
+  await recarregarTudo();
+}
+
+async function removerContaPagar(id) {
+  await api().excluir_conta_pagar(id);
+  toast('Removida.');
+  await carregarContasPagar();
+  await recarregarTudo();
+}
+
+async function abrirModalPagarConta(id) {
+  // pode ser chamado do dashboard, onde o cache de Ajustes ainda não carregou
+  if (!contasPagarCache.length) contasPagarCache = await api().listar_contas_pagar();
+  const cp = contasPagarCache.find(c => c.id === id);
+  if (!cp) return;
+  document.getElementById('mpc-id').value = id;
+  document.getElementById('mpc-titulo').textContent =
+    cp.tipo === 'entrada' ? 'Confirmar recebimento' : 'Confirmar pagamento';
+  document.getElementById('mpc-resumo').textContent =
+    `${cp.descricao} · ${fmt(cp.valor)} · vencimento ${formatarData(cp.vencimento)}`;
+  document.getElementById('mpc-conta').innerHTML =
+    contas.map(c => `<option value="${c.id}">${c.icone} ${c.nome}</option>`).join('');
+  document.getElementById('modal-pagar-conta').classList.remove('escondido');
+}
+function fecharModalPagarConta() { document.getElementById('modal-pagar-conta').classList.add('escondido'); }
+
+async function confirmarPagarConta() {
+  const id = document.getElementById('mpc-id').value;
+  const conta = document.getElementById('mpc-conta').value;
+  const r = await api().pagar_conta(id, conta);
+  if (!r.ok) return toast(r.erro);
+  fecharModalPagarConta();
+  toast('✅ Efetivada!');
+  contasPagarCache = [];
+  await carregarContasPagar().catch(() => {});
+  await recarregarTudo();
+}
+
+async function carregarRecorrencias() {
+  const rows = await api().listar_recorrencias();
+  const box = document.getElementById('lista-recorrencias');
+  box.innerHTML = rows.length ? rows.map(r => `
+    <div class="trans-item">
+      <div class="trans-icone" style="background:var(--surface-2)">🔁</div>
+      <div class="trans-info">
+        <div class="trans-desc">${escapar(r.descricao)}</div>
+        <div class="trans-meta">${FREQ_LABEL[r.frequencia] || r.frequencia} · próxima em ${formatarData(r.proxima_data)}</div>
+      </div>
+      <div class="trans-valor ${r.tipo}">${r.tipo === 'entrada' ? '+' : '−'} ${fmt(r.valor)}</div>
+      <button class="trans-excluir" onclick="removerRecorrencia(${r.id})">🗑️</button>
+    </div>`).join('')
+  : '<div class="vazio">Nenhuma recorrência ainda.</div>';
+}
+
+async function criarRecorrencia() {
+  const descricao = document.getElementById('nr-descricao').value.trim();
+  const valor = document.getElementById('nr-valor').value;
+  const tipo = document.getElementById('nr-tipo').value;
+  const frequencia = document.getElementById('nr-frequencia').value;
+  const data = document.getElementById('nr-data').value;
+  if (!descricao) return toast('Descreva a recorrência.');
+  if (!valor) return toast('Informe o valor.');
+  if (!data) return toast('Informe a primeira data.');
+
+  const r = await api().criar_recorrencia(descricao, valor, tipo, frequencia, data);
+  if (!r.ok) return toast(r.erro);
+  document.getElementById('nr-descricao').value = '';
+  document.getElementById('nr-valor').value = '';
+  document.getElementById('nr-data').value = '';
+  toast('✅ Recorrência criada.');
+  await carregarRecorrencias();
+  await carregarContasPagar();
+  await recarregarTudo();
+}
+
+async function removerRecorrencia(id) {
+  await api().excluir_recorrencia(id);
+  toast('Removida.');
+  await carregarRecorrencias();
 }
 
 // ---------------------------------------------------------------- Cartões

@@ -18,6 +18,7 @@ from . import llm
 from . import cartoes
 from . import investimentos
 from . import metas
+from . import recorrencias
 from .logger import get_logger
 
 log = get_logger(__name__)
@@ -82,6 +83,12 @@ class Api:
             ],
             "alertas": avaliados,
             "ultimas": [self._trans_view(t) for t in repo.listar_transacoes(mes=mes, limite=8)],
+            "proximos_vencimentos": [
+                {"id": cp["id"], "descricao": cp["descricao"], "valor": _reais(cp["valor_cents"]),
+                 "tipo": cp["tipo"], "vencimento": cp["vencimento"],
+                 "vencida": cp["vencimento"] < date.today().isoformat()}
+                for cp in recorrencias.proximos_vencimentos()
+            ],
         }
 
     def _trans_view(self, t):
@@ -457,6 +464,70 @@ class Api:
     def excluir_meta(self, meta_id):
         metas.excluir_meta(int(meta_id))
         log.info("Meta #%s excluída", meta_id)
+        return {"ok": True}
+
+    # -------------------- Contas a pagar e recorrências --------------------
+    def listar_contas_pagar(self):
+        hoje = date.today().isoformat()
+        return [
+            {"id": cp["id"], "descricao": cp["descricao"], "valor": _reais(cp["valor_cents"]),
+             "tipo": cp["tipo"], "vencimento": cp["vencimento"], "vencida": cp["vencimento"] < hoje,
+             "categoria_nome": cp.get("categoria_nome") or "Sem categoria",
+             "categoria_icone": cp.get("categoria_icone") or "📦"}
+            for cp in recorrencias.listar_contas_pagar()
+        ]
+
+    def criar_conta_pagar(self, descricao, valor, tipo, vencimento, categoria_id=None):
+        if not descricao or not descricao.strip():
+            return {"ok": False, "erro": "Descreva a conta."}
+        cents = _cents(valor)
+        if cents <= 0:
+            return {"ok": False, "erro": "Informe um valor maior que zero."}
+        if not vencimento:
+            return {"ok": False, "erro": "Informe o vencimento."}
+        cat = int(categoria_id) if categoria_id else None
+        cid = recorrencias.criar_conta_pagar(descricao, cents, tipo, vencimento, cat)
+        log.info("Conta a pagar #%s criada: %s", cid, descricao)
+        return {"ok": True, "id": cid}
+
+    def pagar_conta(self, conta_pagar_id, conta_id):
+        r = recorrencias.pagar_conta(int(conta_pagar_id), int(conta_id))
+        if r is None:
+            return {"ok": False, "erro": "Essa conta já foi paga ou não existe."}
+        return {"ok": True}
+
+    def excluir_conta_pagar(self, conta_pagar_id):
+        recorrencias.excluir_conta_pagar(int(conta_pagar_id))
+        return {"ok": True}
+
+    def listar_recorrencias(self):
+        return [
+            {"id": r["id"], "descricao": r["descricao"], "valor": _reais(r["valor_cents"]),
+             "tipo": r["tipo"], "frequencia": r["frequencia"], "proxima_data": r["proxima_data"],
+             "categoria_nome": r.get("categoria_nome") or "Sem categoria",
+             "conta_nome": r.get("conta_nome") or "—", "ativo": bool(r["ativo"])}
+            for r in recorrencias.listar_recorrencias()
+        ]
+
+    def criar_recorrencia(self, descricao, valor, tipo, frequencia, proxima_data,
+                          categoria_id=None, conta_id=None):
+        if not descricao or not descricao.strip():
+            return {"ok": False, "erro": "Descreva a recorrência."}
+        cents = _cents(valor)
+        if cents <= 0:
+            return {"ok": False, "erro": "Informe um valor maior que zero."}
+        if not proxima_data:
+            return {"ok": False, "erro": "Informe a primeira data."}
+        cat = int(categoria_id) if categoria_id else None
+        cta = int(conta_id) if conta_id else None
+        rid = recorrencias.criar_recorrencia(descricao, cents, tipo, frequencia, proxima_data, cat, cta)
+        log.info("Recorrência #%s criada: %s (%s)", rid, descricao, frequencia)
+        # se a primeira data já passou/é hoje, materializa na hora
+        recorrencias.materializar()
+        return {"ok": True, "id": rid}
+
+    def excluir_recorrencia(self, recorrencia_id):
+        recorrencias.excluir_recorrencia(int(recorrencia_id))
         return {"ok": True}
 
     # -------------------- IA local --------------------

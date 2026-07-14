@@ -114,6 +114,34 @@ def avaliar(mes=None, ultima_transacao=None):
     # 5. Faturas de cartão vencendo ou vencidas
     alertas.extend(_alertas_cartoes())
 
+    # 6. Contas a pagar vencendo ou vencidas
+    alertas.extend(_alertas_contas_pagar())
+
+    return alertas
+
+
+def _alertas_contas_pagar():
+    from . import recorrencias
+    alertas = []
+    hoje = date.today()
+    for cp in recorrencias.listar_contas_pagar():
+        venc = date.fromisoformat(cp["vencimento"])
+        dias = (venc - hoje).days
+        rotulo = "receber" if cp["tipo"] == "entrada" else "pagar"
+        if dias < 0:
+            alertas.append({
+                "tipo": "conta_vencida",
+                "nivel": "perigo",
+                "mensagem": f"'{cp['descricao']}' ({_fmt(cp['valor_cents'])}) venceu em "
+                            f"{venc.strftime('%d/%m')} e ainda está em aberto.",
+            })
+        elif dias <= 3:
+            alertas.append({
+                "tipo": "conta_vencendo",
+                "nivel": "atencao",
+                "mensagem": f"Você tem '{cp['descricao']}' ({_fmt(cp['valor_cents'])}) "
+                            f"para {rotulo} até {venc.strftime('%d/%m')}.",
+            })
     return alertas
 
 

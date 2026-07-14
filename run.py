@@ -10,6 +10,7 @@ import webview
 from backend.db import init_db
 from backend.api import Api
 from backend.logger import setup_logging, get_logger
+from backend import recorrencias
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 INDEX = os.path.join(BASE_DIR, "frontend", "index.html")
@@ -22,6 +23,7 @@ def main():
     log.info("Iniciando MeuCaixa")
     try:
         init_db()
+        recorrencias.materializar()
         api = Api()
         webview.create_window(
             "MeuCaixa — seu dinheiro, sem complicação",

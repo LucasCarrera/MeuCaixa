@@ -116,6 +116,11 @@
           <div id="lista-ultimas" class="lista-trans"></div>
         </div>
       </div>
+
+      <div class="card" style="margin-top:18px">
+        <h3>📅 Próximos vencimentos</h3>
+        <div id="lista-vencimentos" class="lista-trans"></div>
+      </div>
     </section>
 
     <!-- VIEW: LANÇAR -->
@@ -290,6 +295,45 @@
         <div style="display:flex; gap:10px; margin-top:12px; flex-wrap:wrap">
           <button class="btn-medio" style="margin:0" onclick="abrirModalConta()">➕ Nova conta</button>
           <button class="btn-medio" style="margin:0" onclick="abrirModalTransferencia()">↔️ Transferir entre contas</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>📅 Contas a pagar e receber</h3>
+        <p class="sub">Boletos, contas e recebimentos com data marcada. Avisamos quando estiver perto.</p>
+        <div id="lista-contas-pagar"></div>
+        <div class="nova-conta-pagar">
+          <input id="ncp-descricao" class="entrada-texto" placeholder="Descrição (ex: IPTU, boleto...)">
+          <div class="campo-moeda pequeno"><span>R$</span>
+            <input id="ncp-valor" type="text" inputmode="decimal" placeholder="0,00"></div>
+          <select id="ncp-tipo" class="entrada-texto">
+            <option value="saida">A pagar</option>
+            <option value="entrada">A receber</option>
+          </select>
+          <input id="ncp-vencimento" type="date" class="entrada-texto">
+          <button class="btn-medio" style="margin:0" onclick="criarContaPagar()">Adicionar</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>🔁 Recorrências</h3>
+        <p class="sub">Salário, aluguel, assinaturas... Geramos a conta automaticamente na data prevista.</p>
+        <div id="lista-recorrencias"></div>
+        <div class="nova-recorrencia">
+          <input id="nr-descricao" class="entrada-texto" placeholder="Descrição (ex: Aluguel)">
+          <div class="campo-moeda pequeno"><span>R$</span>
+            <input id="nr-valor" type="text" inputmode="decimal" placeholder="0,00"></div>
+          <select id="nr-tipo" class="entrada-texto">
+            <option value="saida">Gasto</option>
+            <option value="entrada">Recebimento</option>
+          </select>
+          <select id="nr-frequencia" class="entrada-texto">
+            <option value="mensal">Mensal</option>
+            <option value="semanal">Semanal</option>
+            <option value="anual">Anual</option>
+          </select>
+          <input id="nr-data" type="date" class="entrada-texto">
+          <button class="btn-medio" style="margin:0" onclick="criarRecorrencia()">Adicionar</button>
         </div>
       </div>
 
@@ -480,6 +524,18 @@
     <label class="rotulo-campo">Data</label>
     <input id="ma-data" type="date" class="entrada-texto">
     <button class="btn-grande" onclick="confirmarAporte()">Registrar aporte</button>
+  </div>
+</div>
+
+<!-- Modal de pagar/receber conta -->
+<div id="modal-pagar-conta" class="modal-fundo escondido" onclick="if(event.target===this)fecharModalPagarConta()">
+  <div class="modal">
+    <h2 id="mpc-titulo">Efetivar conta</h2>
+    <input type="hidden" id="mpc-id">
+    <p class="sub" id="mpc-resumo"></p>
+    <label class="rotulo-campo">Em qual conta?</label>
+    <select id="mpc-conta" class="entrada-texto"></select>
+    <button class="btn-grande" onclick="confirmarPagarConta()">Confirmar</button>
   </div>
 </div>
 

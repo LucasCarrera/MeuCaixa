@@ -135,6 +135,37 @@ CREATE TABLE IF NOT EXISTS aportes (
     FOREIGN KEY (investimento_id) REFERENCES investimentos(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS recorrencias (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    descricao     TEXT NOT NULL,
+    valor_cents   INTEGER NOT NULL,
+    tipo          TEXT NOT NULL CHECK (tipo IN ('saida', 'entrada')),
+    frequencia    TEXT NOT NULL CHECK (frequencia IN ('semanal', 'mensal', 'anual')),
+    proxima_data  TEXT NOT NULL,                    -- YYYY-MM-DD
+    categoria_id  INTEGER,
+    conta_id      INTEGER,
+    ativo         INTEGER DEFAULT 1,
+    criado_em     TEXT NOT NULL,
+    FOREIGN KEY (categoria_id) REFERENCES categorias(id) ON DELETE SET NULL,
+    FOREIGN KEY (conta_id) REFERENCES contas(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS contas_pagar (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    descricao      TEXT NOT NULL,
+    valor_cents    INTEGER NOT NULL,
+    tipo           TEXT NOT NULL CHECK (tipo IN ('saida', 'entrada')),
+    vencimento     TEXT NOT NULL,                   -- YYYY-MM-DD
+    pago           INTEGER DEFAULT 0,
+    categoria_id   INTEGER,
+    conta_id       INTEGER,
+    recorrencia_id INTEGER,
+    criado_em      TEXT NOT NULL,
+    FOREIGN KEY (categoria_id) REFERENCES categorias(id) ON DELETE SET NULL,
+    FOREIGN KEY (conta_id) REFERENCES contas(id) ON DELETE SET NULL,
+    FOREIGN KEY (recorrencia_id) REFERENCES recorrencias(id) ON DELETE SET NULL
+);
+
 CREATE TABLE IF NOT EXISTS metas (
     id                INTEGER PRIMARY KEY AUTOINCREMENT,
     nome              TEXT NOT NULL,
