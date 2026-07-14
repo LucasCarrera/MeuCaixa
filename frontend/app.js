@@ -62,6 +62,7 @@ function configurarNavegacao() {
       document.getElementById('view-' + btn.dataset.view).classList.remove('escondido');
       if (btn.dataset.view === 'ajustes') carregarAjustes();
       if (btn.dataset.view === 'cartoes') carregarCartoes();
+      if (btn.dataset.view === 'investimentos') carregarInvestimentos();
     });
   });
 }
@@ -571,6 +572,129 @@ async function confirmarPagarFatura() {
   await carregarCartoes();
   await carregarContas();
   await recarregarTudo();
+}
+
+// ---------------------------------------------------------------- Investimentos
+let investimentosCache = [];
+
+const TIPOS_INVEST = {
+  renda_fixa:  { label: 'Renda fixa',  cor: '#1B7A5A', icone: '🏦' },
+  acao:        { label: 'Ações',       cor: '#3B6FB0', icone: '📈' },
+  fii:         { label: 'FIIs',        cor: '#C9741E', icone: '🏢' },
+  cripto:      { label: 'Cripto',      cor: '#8E44AD', icone: '₿' },
+  fundo:       { label: 'Fundos',      cor: '#2A9D8F', icone: '📊' },
+  previdencia: { label: 'Previdência', cor: '#6B7772', icone: '🛡️' },
+};
+
+async function carregarInvestimentos() {
+  const c = await api().listar_investimentos();
+  investimentosCache = c.ativos;
+
+  document.getElementById('inv-total-investido').textContent = fmt(c.total_investido);
+  document.getElementById('inv-total-mercado').textContent = fmt(c.total_mercado);
+  const rentEl = document.getElementById('inv-rentabilidade');
+  const sinalRent = c.rentabilidade >= 0 ? '+' : '';
+  rentEl.textContent = `${sinalRent}${fmt(c.rentabilidade)} (${sinalRent}${c.rentabilidade_pct}%)`;
+  rentEl.style.color = c.rentabilidade >= 0 ? 'var(--green)' : 'var(--red)';
+
+  document.getElementById('inv-rosca').innerHTML = renderRosca(c.por_tipo, c.total_mercado);
+
+  const lista = document.getElementById('lista-investimentos');
+  lista.innerHTML = c.ativos.length ? c.ativos.map(a => {
+    const info = TIPOS_INVEST[a.tipo] || { label: a.tipo, icone: '💰' };
+    const sinal = a.rentabilidade >= 0 ? '+' : '';
+    return `
+      <div class="ativo-item">
+        <div class="ativo-icone">${info.icone}</div>
+        <div class="ativo-info">
+          <div class="ativo-nome">${escapar(a.nome)}</div>
+          <div class="ativo-meta">${info.label}${a.corretora ? ' · ' + escapar(a.corretora) : ''}${a.ticker ? ' · ' + escapar(a.ticker) : ''}</div>
+        </div>
+        <div class="ativo-valores">
+          <div class="valor">${fmt(a.valor_mercado)}</div>
+          <div class="ativo-rent ${a.rentabilidade >= 0 ? 'pos' : 'neg'}">${sinal}${fmt(a.rentabilidade)} (${sinal}${a.rentabilidade_pct}%)</div>
+        </div>
+        <div class="ativo-acoes">
+          <button onclick="abrirModalAporte(${a.id})">💰</button>
+          <button onclick="removerInvestimento(${a.id})">🗑️</button>
+        </div>
+      </div>`;
+  }).join('') : '<div class="vazio">Nenhum ativo cadastrado ainda.</div>';
+}
+
+function renderRosca(porTipo, total) {
+  if (!total || !porTipo.length) return '<div class="vazio">Sem investimentos ainda.</div>';
+  let acc = 0;
+  const trechos = porTipo.map(p => {
+    const cor = (TIPOS_INVEST[p.tipo] || {}).cor || '#6B7772';
+    const pct = p.valor / total * 100;
+    const trecho = `${cor} ${acc}% ${acc + pct}%`;
+    acc += pct;
+    return trecho;
+  }).join(', ');
+  const legenda = porTipo.map(p => {
+    const info = TIPOS_INVEST[p.tipo] || { label: p.tipo, cor: '#6B7772' };
+    return `<div><span class="rosca-dot" style="background:${info.cor}"></span>${info.label} · ${fmt(p.valor)}</div>`;
+  }).join('');
+  return `
+    <div class="rosca-wrap">
+      <div class="rosca" style="background: conic-gradient(${trechos})"></div>
+      <div class="rosca-legenda">${legenda}</div>
+    </div>`;
+}
+
+function abrirModalInvestimento() {
+  document.getElementById('mi-tipo').value = 'renda_fixa';
+  document.getElementById('mi-nome').value = '';
+  document.getElementById('mi-corretora').value = '';
+  document.getElementById('mi-ticker').value = '';
+  document.getElementById('mi-indexador').value = '';
+  document.getElementById('modal-investimento').classList.remove('escondido');
+}
+function fecharModalInvestimento() { document.getElementById('modal-investimento').classList.add('escondido'); }
+
+async function salvarInvestimentoModal() {
+  const tipo = document.getElementById('mi-tipo').value;
+  const nome = document.getElementById('mi-nome').value.trim();
+  const corretora = document.getElementById('mi-corretora').value.trim();
+  const ticker = document.getElementById('mi-ticker').value.trim();
+  const indexador = document.getElementById('mi-indexador').value.trim();
+  if (!nome) return toast('Dê um nome pro ativo.');
+
+  const r = await api().criar_investimento(tipo, nome, corretora, ticker || null, indexador);
+  if (!r.ok) return toast(r.erro || 'Não deu para criar.');
+  fecharModalInvestimento();
+  toast('✅ Ativo criado.');
+  await carregarInvestimentos();
+}
+
+async function removerInvestimento(id) {
+  await api().excluir_investimento(id);
+  toast('Ativo removido.');
+  await carregarInvestimentos();
+}
+
+function abrirModalAporte(investimentoId) {
+  document.getElementById('ma-investimento-id').value = investimentoId;
+  document.getElementById('ma-valor').value = '';
+  document.getElementById('ma-quantidade').value = '';
+  document.getElementById('ma-data').value = hoje();
+  document.getElementById('modal-aporte').classList.remove('escondido');
+}
+function fecharModalAporte() { document.getElementById('modal-aporte').classList.add('escondido'); }
+
+async function confirmarAporte() {
+  const id = document.getElementById('ma-investimento-id').value;
+  const valor = document.getElementById('ma-valor').value;
+  const quantidade = document.getElementById('ma-quantidade').value;
+  const data = document.getElementById('ma-data').value || hoje();
+  if (!valor) return toast('Informe o valor aportado.');
+
+  const r = await api().registrar_aporte(id, valor, quantidade || null, data);
+  if (!r.ok) return toast(r.erro || 'Não deu para registrar.');
+  fecharModalAporte();
+  toast('✅ Aporte registrado.');
+  await carregarInvestimentos();
 }
 
 // ---------------------------------------------------------------- IA config

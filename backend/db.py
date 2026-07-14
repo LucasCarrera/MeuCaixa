@@ -110,6 +110,31 @@ CREATE TABLE IF NOT EXISTS parcelas_cartao (
     FOREIGN KEY (cartao_id) REFERENCES cartoes(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS investimentos (
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    tipo               TEXT NOT NULL CHECK (tipo IN
+                        ('renda_fixa','acao','fii','cripto','fundo','previdencia')),
+    nome               TEXT NOT NULL,
+    corretora          TEXT DEFAULT '',
+    ticker             TEXT,                          -- símbolo B3 ou id do CoinGecko
+    quantidade         REAL NOT NULL DEFAULT 0,
+    preco_medio_cents  INTEGER NOT NULL DEFAULT 0,
+    indexador          TEXT DEFAULT '',
+    vencimento         TEXT,
+    meta_id            INTEGER,                        -- vínculo opcional com uma meta (sem FK: metas é de outra fase)
+    criado_em          TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS aportes (
+    id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+    investimento_id      INTEGER NOT NULL,
+    valor_cents          INTEGER NOT NULL,
+    quantidade_comprada  REAL,
+    data                 TEXT NOT NULL,
+    criado_em            TEXT NOT NULL,
+    FOREIGN KEY (investimento_id) REFERENCES investimentos(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS orcamentos (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     categoria_id  INTEGER UNIQUE,                   -- NULL = orçamento geral do mês
@@ -149,6 +174,7 @@ CREATE INDEX IF NOT EXISTS idx_transacoes_conta  ON transacoes(conta_id);
 CREATE INDEX IF NOT EXISTS idx_categorias_pai    ON categorias(categoria_pai_id);
 CREATE INDEX IF NOT EXISTS idx_parcelas_cartao   ON parcelas_cartao(cartao_id, mes_fatura);
 CREATE INDEX IF NOT EXISTS idx_parcelas_compra   ON parcelas_cartao(compra_id);
+CREATE INDEX IF NOT EXISTS idx_aportes_invest    ON aportes(investimento_id);
 """
 
 CATEGORIAS_PADRAO = [

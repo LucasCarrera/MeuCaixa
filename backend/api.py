@@ -16,6 +16,7 @@ from . import alerts
 from . import reports
 from . import llm
 from . import cartoes
+from . import investimentos
 from .logger import get_logger
 
 log = get_logger(__name__)
@@ -34,6 +35,16 @@ def _cents(valor_reais):
 
 def _reais(cents):
     return round((cents or 0) / 100.0, 2)
+
+
+def _num(valor):
+    """Converte '0,01' ou 0.01 para float, aceitando formato brasileiro (vírgula decimal)."""
+    if isinstance(valor, str):
+        v = valor.strip().replace(" ", "")
+        if "," in v:
+            v = v.replace(".", "").replace(",", ".")
+        return float(v or 0)
+    return float(valor)
 
 
 def _abrir_arquivo(caminho):
@@ -363,6 +374,49 @@ class Api:
             return {"ok": False, "erro": "Não há fatura em aberto nesse mês."}
         log.info("Fatura do cartão #%s (%s) paga via conta #%s", cartao_id, mes, conta_id)
         return {"ok": True, "total": _reais(r["total_cents"])}
+
+    # -------------------- Investimentos --------------------
+    def listar_investimentos(self):
+        c = investimentos.carteira()
+        return {
+            "total_investido": _reais(c["total_investido_cents"]),
+            "total_mercado": _reais(c["total_mercado_cents"]),
+            "rentabilidade": _reais(c["rentabilidade_cents"]),
+            "rentabilidade_pct": round(c["rentabilidade_pct"], 2),
+            "por_tipo": [{"tipo": t["tipo"], "valor": _reais(t["valor_cents"])} for t in c["por_tipo"]],
+            "ativos": [
+                {"id": a["id"], "tipo": a["tipo"], "nome": a["nome"], "corretora": a["corretora"],
+                 "ticker": a["ticker"], "quantidade": a["quantidade"],
+                 "preco_medio": _reais(a["preco_medio_cents"]),
+                 "indexador": a["indexador"], "vencimento": a["vencimento"],
+                 "valor_investido": _reais(a["valor_investido_cents"]),
+                 "valor_mercado": _reais(a["valor_mercado_cents"]),
+                 "rentabilidade": _reais(a["rentabilidade_cents"]),
+                 "rentabilidade_pct": round(a["rentabilidade_pct"], 2),
+                 "preco_atual": _reais(a["preco_atual_cents"]) if a["preco_atual_cents"] is not None else None}
+                for a in c["ativos"]
+            ],
+        }
+
+    def criar_investimento(self, tipo, nome, corretora="", ticker=None, indexador="", vencimento=None):
+        if not nome or not nome.strip():
+            return {"ok": False, "erro": "Dê um nome para o ativo."}
+        iid = investimentos.criar_investimento(tipo, nome, corretora, ticker or None, indexador, vencimento or None)
+        log.info("Investimento #%s criado: %s (%s)", iid, nome, tipo)
+        return {"ok": True, "id": iid}
+
+    def excluir_investimento(self, investimento_id):
+        investimentos.excluir_investimento(int(investimento_id))
+        log.info("Investimento #%s excluído", investimento_id)
+        return {"ok": True}
+
+    def registrar_aporte(self, investimento_id, valor, quantidade_comprada=None, data_str=None):
+        cents = _cents(valor)
+        if cents <= 0:
+            return {"ok": False, "erro": "Informe um valor maior que zero."}
+        qtd = _num(quantidade_comprada) if quantidade_comprada else None
+        investimentos.registrar_aporte(int(investimento_id), cents, qtd, data_str)
+        return {"ok": True}
 
     # -------------------- IA local --------------------
     def ia_status(self):

@@ -58,6 +58,7 @@
       <button class="nav-item" data-view="lancar"><span>➕</span> Lançar</button>
       <button class="nav-item" data-view="historico"><span>📋</span> Histórico</button>
       <button class="nav-item" data-view="cartoes"><span>💳</span> Cartões</button>
+      <button class="nav-item" data-view="investimentos"><span>📈</span> Investimentos</button>
       <button class="nav-item" data-view="assistente"><span>💬</span> Assistente</button>
       <button class="nav-item" data-view="relatorios"><span>📄</span> Relatórios</button>
       <button class="nav-item" data-view="ajustes"><span>⚙️</span> Ajustes</button>
@@ -184,6 +185,42 @@
         <button class="btn-medio" style="margin:0" onclick="abrirModalCartao()">➕ Novo cartão</button>
       </div>
       <div id="lista-cartoes"></div>
+    </section>
+
+    <!-- VIEW: INVESTIMENTOS -->
+    <section class="view escondido" id="view-investimentos">
+      <div class="card" style="display:flex; justify-content:space-between; align-items:center">
+        <div>
+          <h2>📈 Investimentos</h2>
+          <p class="sub">Sua carteira, com cotação ao vivo quando disponível.</p>
+        </div>
+        <button class="btn-medio" style="margin:0" onclick="abrirModalInvestimento()">➕ Novo ativo</button>
+      </div>
+
+      <div class="cards-3">
+        <div class="card mini">
+          <span class="mini-rotulo">Total investido</span>
+          <span class="mini-valor" id="inv-total-investido">R$ 0,00</span>
+        </div>
+        <div class="card mini">
+          <span class="mini-rotulo">Valor de mercado</span>
+          <span class="mini-valor" id="inv-total-mercado">R$ 0,00</span>
+        </div>
+        <div class="card mini">
+          <span class="mini-rotulo">Rentabilidade</span>
+          <span class="mini-valor" id="inv-rentabilidade">R$ 0,00</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Distribuição por tipo</h3>
+        <div id="inv-rosca"></div>
+      </div>
+
+      <div class="card">
+        <h3>Ativos</h3>
+        <div id="lista-investimentos"></div>
+      </div>
     </section>
 
     <!-- VIEW: ASSISTENTE -->
@@ -385,6 +422,54 @@
     <label class="rotulo-campo">Pagar com qual conta?</label>
     <select id="mpf-conta" class="entrada-texto"></select>
     <button class="btn-grande" onclick="confirmarPagarFatura()">Confirmar pagamento</button>
+  </div>
+</div>
+
+<!-- Modal de novo ativo -->
+<div id="modal-investimento" class="modal-fundo escondido" onclick="if(event.target===this)fecharModalInvestimento()">
+  <div class="modal">
+    <h2>Novo ativo</h2>
+    <label class="rotulo-campo">Tipo</label>
+    <select id="mi-tipo" class="entrada-texto">
+      <option value="renda_fixa">Renda fixa</option>
+      <option value="acao">Ação</option>
+      <option value="fii">FII</option>
+      <option value="cripto">Cripto</option>
+      <option value="fundo">Fundo</option>
+      <option value="previdencia">Previdência</option>
+    </select>
+    <label class="rotulo-campo">Nome</label>
+    <input id="mi-nome" class="entrada-texto" placeholder="Ex: CDB Banco X, Petrobras PN...">
+    <div class="linha-2">
+      <div>
+        <label class="rotulo-campo">Corretora</label>
+        <input id="mi-corretora" class="entrada-texto" placeholder="Opcional">
+      </div>
+      <div>
+        <label class="rotulo-campo">Ticker</label>
+        <input id="mi-ticker" class="entrada-texto" placeholder="Ex: PETR4, bitcoin">
+      </div>
+    </div>
+    <small class="sub">Ações/FIIs: código B3 (PETR4). Cripto: id do CoinGecko (bitcoin, ethereum). Deixe em branco pra renda fixa.</small>
+    <label class="rotulo-campo">Indexador (opcional)</label>
+    <input id="mi-indexador" class="entrada-texto" placeholder="Ex: 110% CDI, IPCA+6%">
+    <button class="btn-grande" onclick="salvarInvestimentoModal()">Criar ativo</button>
+  </div>
+</div>
+
+<!-- Modal de aporte -->
+<div id="modal-aporte" class="modal-fundo escondido" onclick="if(event.target===this)fecharModalAporte()">
+  <div class="modal">
+    <h2>Registrar aporte</h2>
+    <input type="hidden" id="ma-investimento-id">
+    <label class="rotulo-campo">Valor aportado</label>
+    <div class="campo-moeda pequeno"><span>R$</span>
+      <input id="ma-valor" type="text" inputmode="decimal" placeholder="0,00"></div>
+    <label class="rotulo-campo">Quantidade comprada (opcional — ações, FIIs, cripto)</label>
+    <input id="ma-quantidade" type="text" inputmode="decimal" class="entrada-texto" placeholder="Deixe em branco pra renda fixa">
+    <label class="rotulo-campo">Data</label>
+    <input id="ma-data" type="date" class="entrada-texto">
+    <button class="btn-grande" onclick="confirmarAporte()">Registrar aporte</button>
   </div>
 </div>
 
