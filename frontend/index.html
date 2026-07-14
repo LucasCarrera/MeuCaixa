@@ -221,6 +221,14 @@
         <h3>Ativos</h3>
         <div id="lista-investimentos"></div>
       </div>
+
+      <div class="card">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px">
+          <h3 style="margin:0">🎯 Metas</h3>
+          <button class="btn-medio" style="margin:0" onclick="abrirModalMeta()">➕ Nova meta</button>
+        </div>
+        <div id="lista-metas"></div>
+      </div>
     </section>
 
     <!-- VIEW: ASSISTENTE -->
@@ -453,6 +461,8 @@
     <small class="sub">Ações/FIIs: código B3 (PETR4). Cripto: id do CoinGecko (bitcoin, ethereum). Deixe em branco pra renda fixa.</small>
     <label class="rotulo-campo">Indexador (opcional)</label>
     <input id="mi-indexador" class="entrada-texto" placeholder="Ex: 110% CDI, IPCA+6%">
+    <label class="rotulo-campo">Vinculado à meta (opcional)</label>
+    <select id="mi-meta" class="entrada-texto"><option value="">Nenhuma</option></select>
     <button class="btn-grande" onclick="salvarInvestimentoModal()">Criar ativo</button>
   </div>
 </div>
@@ -470,6 +480,34 @@
     <label class="rotulo-campo">Data</label>
     <input id="ma-data" type="date" class="entrada-texto">
     <button class="btn-grande" onclick="confirmarAporte()">Registrar aporte</button>
+  </div>
+</div>
+
+<!-- Modal de nova meta -->
+<div id="modal-meta" class="modal-fundo escondido" onclick="if(event.target===this)fecharModalMeta()">
+  <div class="modal">
+    <h2>🎯 Nova meta</h2>
+    <label class="rotulo-campo">O que você quer alcançar?</label>
+    <input id="mm-nome" class="entrada-texto" placeholder="Ex: Reserva de emergência, viagem...">
+    <label class="rotulo-campo">Valor alvo</label>
+    <div class="campo-moeda pequeno"><span>R$</span>
+      <input id="mm-alvo" type="text" inputmode="decimal" placeholder="0,00"></div>
+    <label class="rotulo-campo">Até quando? (opcional)</label>
+    <input id="mm-prazo" type="date" class="entrada-texto">
+    <button class="btn-grande" onclick="salvarMetaModal()">Criar meta</button>
+  </div>
+</div>
+
+<!-- Modal de guardar na meta -->
+<div id="modal-guardar-meta" class="modal-fundo escondido" onclick="if(event.target===this)fecharModalGuardarMeta()">
+  <div class="modal">
+    <h2>Guardar na meta</h2>
+    <input type="hidden" id="mgm-meta-id">
+    <p class="sub" id="mgm-resumo"></p>
+    <label class="rotulo-campo">Quanto você guardou?</label>
+    <div class="campo-moeda pequeno"><span>R$</span>
+      <input id="mgm-valor" type="text" inputmode="decimal" placeholder="0,00"></div>
+    <button class="btn-grande" onclick="confirmarGuardarMeta()">Guardar</button>
   </div>
 </div>
 

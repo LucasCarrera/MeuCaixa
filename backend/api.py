@@ -17,6 +17,7 @@ from . import reports
 from . import llm
 from . import cartoes
 from . import investimentos
+from . import metas
 from .logger import get_logger
 
 log = get_logger(__name__)
@@ -398,11 +399,14 @@ class Api:
             ],
         }
 
-    def criar_investimento(self, tipo, nome, corretora="", ticker=None, indexador="", vencimento=None):
+    def criar_investimento(self, tipo, nome, corretora="", ticker=None, indexador="",
+                           vencimento=None, meta_id=None):
         if not nome or not nome.strip():
             return {"ok": False, "erro": "Dê um nome para o ativo."}
-        iid = investimentos.criar_investimento(tipo, nome, corretora, ticker or None, indexador, vencimento or None)
-        log.info("Investimento #%s criado: %s (%s)", iid, nome, tipo)
+        mid = int(meta_id) if meta_id else None
+        iid = investimentos.criar_investimento(tipo, nome, corretora, ticker or None,
+                                                indexador, vencimento or None, mid)
+        log.info("Investimento #%s criado: %s (%s, meta=%s)", iid, nome, tipo, mid)
         return {"ok": True, "id": iid}
 
     def excluir_investimento(self, investimento_id):
@@ -416,6 +420,43 @@ class Api:
             return {"ok": False, "erro": "Informe um valor maior que zero."}
         qtd = _num(quantidade_comprada) if quantidade_comprada else None
         investimentos.registrar_aporte(int(investimento_id), cents, qtd, data_str)
+        return {"ok": True}
+
+    # -------------------- Metas --------------------
+    def listar_metas(self):
+        return [
+            {"id": m["id"], "nome": m["nome"], "prazo": m["prazo"],
+             "valor_alvo": _reais(m["valor_alvo_cents"]),
+             "valor_guardado": _reais(m["valor_atual_cents"]),
+             "valor_vinculado": _reais(m["valor_vinculado_cents"]),
+             "valor_total": _reais(m["valor_total_cents"]),
+             "falta": _reais(m["falta_cents"]),
+             "progresso_pct": round(m["progresso_pct"], 1),
+             "meses_restantes": m["meses_restantes"],
+             "por_mes": _reais(m["por_mes_cents"])}
+            for m in metas.listar_metas()
+        ]
+
+    def criar_meta(self, nome, valor_alvo, prazo=None):
+        if not nome or not nome.strip():
+            return {"ok": False, "erro": "Dê um nome para a meta."}
+        cents = _cents(valor_alvo)
+        if cents <= 0:
+            return {"ok": False, "erro": "Informe um valor alvo maior que zero."}
+        mid = metas.criar_meta(nome, cents, prazo or None)
+        log.info("Meta #%s criada: %s", mid, nome)
+        return {"ok": True, "id": mid}
+
+    def guardar_na_meta(self, meta_id, valor):
+        cents = _cents(valor)
+        if cents <= 0:
+            return {"ok": False, "erro": "Informe um valor maior que zero."}
+        metas.guardar_na_meta(int(meta_id), cents)
+        return {"ok": True}
+
+    def excluir_meta(self, meta_id):
+        metas.excluir_meta(int(meta_id))
+        log.info("Meta #%s excluída", meta_id)
         return {"ok": True}
 
     # -------------------- IA local --------------------

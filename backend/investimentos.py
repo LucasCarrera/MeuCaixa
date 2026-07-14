@@ -30,14 +30,14 @@ def listar_investimentos():
         conn.close()
 
 
-def criar_investimento(tipo, nome, corretora="", ticker=None, indexador="", vencimento=None):
+def criar_investimento(tipo, nome, corretora="", ticker=None, indexador="", vencimento=None, meta_id=None):
     conn = get_connection()
     try:
         cur = conn.execute(
             "INSERT INTO investimentos "
-            "(tipo, nome, corretora, ticker, quantidade, preco_medio_cents, indexador, vencimento, criado_em) "
-            "VALUES (?,?,?,?,0,0,?,?,?)",
-            (tipo, nome.strip(), corretora, ticker, indexador, vencimento, agora()),
+            "(tipo, nome, corretora, ticker, quantidade, preco_medio_cents, indexador, vencimento, meta_id, criado_em) "
+            "VALUES (?,?,?,?,0,0,?,?,?,?)",
+            (tipo, nome.strip(), corretora, ticker, indexador, vencimento, meta_id, agora()),
         )
         conn.commit()
         return cur.lastrowid

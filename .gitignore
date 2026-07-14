@@ -3,8 +3,6 @@ __pycache__/
 *.pyc
 .claude/settings.local.json
 
-# dados pessoais do usuário — nunca versionar
-data/*.db
-data/logs/
-data/relatorios/
+# dados pessoais do usuário — nunca versionar (tudo em data/, exceto o .gitkeep)
+data/*
 !data/.gitkeep

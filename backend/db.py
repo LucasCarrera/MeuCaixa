@@ -135,6 +135,15 @@ CREATE TABLE IF NOT EXISTS aportes (
     FOREIGN KEY (investimento_id) REFERENCES investimentos(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS metas (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    nome              TEXT NOT NULL,
+    valor_alvo_cents  INTEGER NOT NULL,
+    prazo             TEXT,                          -- YYYY-MM-DD
+    valor_atual_cents INTEGER NOT NULL DEFAULT 0,    -- guardado manualmente (fora investimentos)
+    criado_em         TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS orcamentos (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     categoria_id  INTEGER UNIQUE,                   -- NULL = orçamento geral do mês

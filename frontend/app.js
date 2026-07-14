@@ -589,6 +589,7 @@ const TIPOS_INVEST = {
 async function carregarInvestimentos() {
   const c = await api().listar_investimentos();
   investimentosCache = c.ativos;
+  await carregarMetas();
 
   document.getElementById('inv-total-investido').textContent = fmt(c.total_investido);
   document.getElementById('inv-total-mercado').textContent = fmt(c.total_mercado);
@@ -649,6 +650,7 @@ function abrirModalInvestimento() {
   document.getElementById('mi-corretora').value = '';
   document.getElementById('mi-ticker').value = '';
   document.getElementById('mi-indexador').value = '';
+  document.getElementById('mi-meta').value = '';
   document.getElementById('modal-investimento').classList.remove('escondido');
 }
 function fecharModalInvestimento() { document.getElementById('modal-investimento').classList.add('escondido'); }
@@ -659,9 +661,10 @@ async function salvarInvestimentoModal() {
   const corretora = document.getElementById('mi-corretora').value.trim();
   const ticker = document.getElementById('mi-ticker').value.trim();
   const indexador = document.getElementById('mi-indexador').value.trim();
+  const meta = document.getElementById('mi-meta').value || null;
   if (!nome) return toast('Dê um nome pro ativo.');
 
-  const r = await api().criar_investimento(tipo, nome, corretora, ticker || null, indexador);
+  const r = await api().criar_investimento(tipo, nome, corretora, ticker || null, indexador, null, meta);
   if (!r.ok) return toast(r.erro || 'Não deu para criar.');
   fecharModalInvestimento();
   toast('✅ Ativo criado.');
@@ -695,6 +698,89 @@ async function confirmarAporte() {
   fecharModalAporte();
   toast('✅ Aporte registrado.');
   await carregarInvestimentos();
+}
+
+// ---------------------------------------------------------------- Metas
+let metasCache = [];
+
+async function carregarMetas() {
+  metasCache = await api().listar_metas();
+
+  document.getElementById('mi-meta').innerHTML = '<option value="">Nenhuma</option>' +
+    metasCache.map(m => `<option value="${m.id}">${escapar(m.nome)}</option>`).join('');
+
+  const box = document.getElementById('lista-metas');
+  box.innerHTML = metasCache.length ? metasCache.map(m => {
+    const prazoTxt = m.prazo ? ` até ${formatarData(m.prazo)}/${m.prazo.slice(0, 4)}` : '';
+    const dicaMes = m.falta > 0 && m.prazo
+      ? ` · guarde ${fmt(m.por_mes)}/mês` : (m.falta <= 0 ? ' · 🎉 meta alcançada!' : '');
+    return `
+      <div class="barra-item" style="padding:8px 0">
+        <div class="barra-topo">
+          <span class="barra-nome">🎯 ${escapar(m.nome)}${prazoTxt}</span>
+          <span class="barra-valor">${fmt(m.valor_total)} de ${fmt(m.valor_alvo)}</span>
+        </div>
+        <div class="barra-trilho"><div class="barra-preench"
+          style="width:${m.progresso_pct}%;background:var(--green)"></div></div>
+        <div style="display:flex; justify-content:space-between; align-items:center">
+          <small class="sub">falta ${fmt(m.falta)}${dicaMes}</small>
+          <span class="ativo-acoes">
+            <button onclick="abrirModalGuardarMeta(${m.id})">💰</button>
+            <button onclick="removerMeta(${m.id})">🗑️</button>
+          </span>
+        </div>
+      </div>`;
+  }).join('') : '<div class="vazio">Nenhuma meta ainda. Que tal criar uma reserva de emergência?</div>';
+}
+
+function abrirModalMeta() {
+  document.getElementById('mm-nome').value = '';
+  document.getElementById('mm-alvo').value = '';
+  document.getElementById('mm-prazo').value = '';
+  document.getElementById('modal-meta').classList.remove('escondido');
+}
+function fecharModalMeta() { document.getElementById('modal-meta').classList.add('escondido'); }
+
+async function salvarMetaModal() {
+  const nome = document.getElementById('mm-nome').value.trim();
+  const alvo = document.getElementById('mm-alvo').value;
+  const prazo = document.getElementById('mm-prazo').value || null;
+  if (!nome) return toast('Dê um nome pra meta.');
+  if (!alvo) return toast('Informe o valor alvo.');
+
+  const r = await api().criar_meta(nome, alvo, prazo);
+  if (!r.ok) return toast(r.erro || 'Não deu para criar.');
+  fecharModalMeta();
+  toast('✅ Meta criada.');
+  await carregarMetas();
+}
+
+async function removerMeta(id) {
+  await api().excluir_meta(id);
+  toast('Meta removida.');
+  await carregarMetas();
+}
+
+function abrirModalGuardarMeta(id) {
+  const m = metasCache.find(m => m.id === id);
+  document.getElementById('mgm-meta-id').value = id;
+  document.getElementById('mgm-resumo').textContent =
+    m ? `${m.nome}: ${fmt(m.valor_total)} de ${fmt(m.valor_alvo)}` : '';
+  document.getElementById('mgm-valor').value = '';
+  document.getElementById('modal-guardar-meta').classList.remove('escondido');
+}
+function fecharModalGuardarMeta() { document.getElementById('modal-guardar-meta').classList.add('escondido'); }
+
+async function confirmarGuardarMeta() {
+  const id = document.getElementById('mgm-meta-id').value;
+  const valor = document.getElementById('mgm-valor').value;
+  if (!valor) return toast('Informe o valor.');
+
+  const r = await api().guardar_na_meta(id, valor);
+  if (!r.ok) return toast(r.erro || 'Não deu para guardar.');
+  fecharModalGuardarMeta();
+  toast('✅ Guardado na meta.');
+  await carregarMetas();
 }
 
 // ---------------------------------------------------------------- IA config
