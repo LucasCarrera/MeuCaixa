@@ -29,12 +29,14 @@ def get_connection():
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS categorias (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    nome        TEXT NOT NULL UNIQUE,
-    tipo        TEXT NOT NULL CHECK (tipo IN ('saida', 'entrada')),
-    icone       TEXT DEFAULT '💰',
-    cor         TEXT DEFAULT '#1B7A5A',
-    padrao      INTEGER DEFAULT 0
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    nome              TEXT NOT NULL UNIQUE,
+    tipo              TEXT NOT NULL CHECK (tipo IN ('saida', 'entrada')),
+    icone             TEXT DEFAULT '💰',
+    cor               TEXT DEFAULT '#1B7A5A',
+    padrao            INTEGER DEFAULT 0,
+    categoria_pai_id  INTEGER,
+    FOREIGN KEY (categoria_pai_id) REFERENCES categorias(id) ON DELETE SET NULL
 );
 
 CREATE TABLE IF NOT EXISTS contas (
@@ -106,9 +108,10 @@ CREATE TABLE IF NOT EXISTS alertas (
 
 # índices que dependem de colunas migradas em bancos antigos (ver _migrar_colunas_antigas)
 INDICES = """
-CREATE INDEX IF NOT EXISTS idx_transacoes_data  ON transacoes(data);
-CREATE INDEX IF NOT EXISTS idx_transacoes_cat   ON transacoes(categoria_id);
-CREATE INDEX IF NOT EXISTS idx_transacoes_conta ON transacoes(conta_id);
+CREATE INDEX IF NOT EXISTS idx_transacoes_data   ON transacoes(data);
+CREATE INDEX IF NOT EXISTS idx_transacoes_cat    ON transacoes(categoria_id);
+CREATE INDEX IF NOT EXISTS idx_transacoes_conta  ON transacoes(conta_id);
+CREATE INDEX IF NOT EXISTS idx_categorias_pai    ON categorias(categoria_pai_id);
 """
 
 CATEGORIAS_PADRAO = [
@@ -140,6 +143,13 @@ def _migrar_colunas_antigas(conn):
             "REFERENCES contas(id) ON DELETE SET NULL"
         )
         _log().info("Migração: coluna conta_id adicionada em transacoes")
+
+    if "categoria_pai_id" not in _colunas(conn, "categorias"):
+        conn.execute(
+            "ALTER TABLE categorias ADD COLUMN categoria_pai_id INTEGER "
+            "REFERENCES categorias(id) ON DELETE SET NULL"
+        )
+        _log().info("Migração: coluna categoria_pai_id adicionada em categorias")
 
 
 def _garantir_conta_padrao(conn):

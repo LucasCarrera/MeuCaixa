@@ -146,15 +146,19 @@ function aplicarSugestao(catId) {
   document.getElementById('sugestao-cat').classList.add('escondido');
 }
 
+function rotuloCategoria(c) {
+  return `${c.categoria_pai_id ? '— ' : ''}${c.icone} ${c.nome}`;
+}
+
 function preencherSelectsCategorias() {
   const doTipo = categorias.filter(c => c.tipo === tipoLancamento);
   const sel = document.getElementById('l-categoria');
-  sel.innerHTML = doTipo.map(c => `<option value="${c.id}">${c.icone} ${c.nome}</option>`).join('');
+  sel.innerHTML = doTipo.map(c => `<option value="${c.id}">${rotuloCategoria(c)}</option>`).join('');
 
   const hSel = document.getElementById('h-categoria');
   const atual = hSel.value;
   hSel.innerHTML = '<option value="">Todas as categorias</option>' +
-    categorias.map(c => `<option value="${c.id}">${c.icone} ${c.nome}</option>`).join('');
+    categorias.map(c => `<option value="${c.id}">${rotuloCategoria(c)}</option>`).join('');
   hSel.value = atual;
 }
 
@@ -276,10 +280,19 @@ async function carregarAjustes() {
 
   // categorias
   document.getElementById('lista-categorias').innerHTML = categorias.map(c => `
-    <span class="chip">${c.icone} ${c.nome}
+    <span class="chip">${c.categoria_pai_id ? '↳ ' : ''}${c.icone} ${c.nome}
       ${c.padrao ? '' : `<button onclick="removerCategoria(${c.id})">✕</button>`}</span>`).join('');
 
+  atualizarSelectPaiCategoria();
   carregarConfigIA();
+}
+
+function atualizarSelectPaiCategoria() {
+  const tipo = document.getElementById('nc-tipo').value;
+  const raizes = categorias.filter(c => c.tipo === tipo && !c.categoria_pai_id);
+  document.getElementById('nc-pai').innerHTML =
+    '<option value="">Subcategoria de (opcional)</option>' +
+    raizes.map(c => `<option value="${c.id}">${c.icone} ${c.nome}</option>`).join('');
 }
 
 async function salvarAjustesGerais() {
@@ -298,10 +311,12 @@ async function salvarOrcamento(catId, valor) {
 async function criarCategoria() {
   const nome = document.getElementById('nc-nome').value.trim();
   const tipo = document.getElementById('nc-tipo').value;
+  const pai = document.getElementById('nc-pai').value || null;
   if (!nome) return toast('Dê um nome.');
-  const r = await api().criar_categoria(nome, tipo);
+  const r = await api().criar_categoria(nome, tipo, '💰', '#1B7A5A', pai);
   if (!r.ok) return toast(r.erro);
   document.getElementById('nc-nome').value = '';
+  document.getElementById('nc-pai').value = '';
   categorias = await api().listar_categorias();
   preencherSelectsCategorias();
   carregarAjustes();

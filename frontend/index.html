@@ -250,12 +250,15 @@
         <h3>Categorias</h3>
         <div class="nova-cat">
           <input id="nc-nome" class="entrada-texto" placeholder="Nome da nova categoria">
-          <select id="nc-tipo" class="entrada-texto">
+          <select id="nc-tipo" class="entrada-texto" onchange="atualizarSelectPaiCategoria()">
             <option value="saida">Gasto</option>
             <option value="entrada">Recebimento</option>
           </select>
           <button class="btn-medio" onclick="criarCategoria()">Adicionar</button>
         </div>
+        <select id="nc-pai" class="entrada-texto" style="margin-bottom:14px">
+          <option value="">Subcategoria de (opcional)</option>
+        </select>
         <div id="lista-categorias" class="chips-cat"></div>
       </div>
     </section>

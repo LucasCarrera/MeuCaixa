@@ -45,25 +45,31 @@ def get_todos_ajustes():
 # Categorias
 # ----------------------------------------------------------------------------
 def listar_categorias(tipo=None):
+    """Retorna categorias ordenadas com cada subcategoria logo após seu pai."""
     conn = get_connection()
     try:
+        sql = (
+            "SELECT c.*, p.nome AS pai_nome FROM categorias c "
+            "LEFT JOIN categorias p ON p.id = c.categoria_pai_id"
+        )
+        params = []
         if tipo:
-            rows = conn.execute(
-                "SELECT * FROM categorias WHERE tipo = ? ORDER BY nome", (tipo,)
-            ).fetchall()
-        else:
-            rows = conn.execute("SELECT * FROM categorias ORDER BY tipo DESC, nome").fetchall()
+            sql += " WHERE c.tipo = ?"
+            params.append(tipo)
+        sql += " ORDER BY c.tipo DESC, COALESCE(p.nome, c.nome), (c.categoria_pai_id IS NOT NULL), c.nome"
+        rows = conn.execute(sql, params).fetchall()
         return [dict(r) for r in rows]
     finally:
         conn.close()
 
 
-def criar_categoria(nome, tipo, icone="💰", cor="#1B7A5A"):
+def criar_categoria(nome, tipo, icone="💰", cor="#1B7A5A", categoria_pai_id=None):
     conn = get_connection()
     try:
         cur = conn.execute(
-            "INSERT INTO categorias (nome, tipo, icone, cor, padrao) VALUES (?,?,?,?,0)",
-            (nome.strip(), tipo, icone, cor),
+            "INSERT INTO categorias (nome, tipo, icone, cor, padrao, categoria_pai_id) "
+            "VALUES (?,?,?,?,0,?)",
+            (nome.strip(), tipo, icone, cor, categoria_pai_id),
         )
         conn.commit()
         return cur.lastrowid

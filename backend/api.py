@@ -127,12 +127,13 @@ class Api:
     def listar_categorias(self, tipo=None):
         return repo.listar_categorias(tipo)
 
-    def criar_categoria(self, nome, tipo, icone="💰", cor="#1B7A5A"):
+    def criar_categoria(self, nome, tipo, icone="💰", cor="#1B7A5A", categoria_pai_id=None):
         if not nome.strip():
             return {"ok": False, "erro": "Dê um nome para a categoria."}
+        pai_id = int(categoria_pai_id) if categoria_pai_id else None
         try:
-            cid = repo.criar_categoria(nome, tipo, icone, cor)
-            log.info("Categoria #%s criada: %s (%s)", cid, nome, tipo)
+            cid = repo.criar_categoria(nome, tipo, icone, cor, pai_id)
+            log.info("Categoria #%s criada: %s (%s, pai=%s)", cid, nome, tipo, pai_id)
             return {"ok": True, "id": cid}
         except Exception:
             log.warning("Falha ao criar categoria %r (provável nome duplicado)", nome, exc_info=True)
