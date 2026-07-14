@@ -347,34 +347,44 @@ class Api:
         log.info("Cartão #%s excluído", cartao_id)
         return {"ok": True}
 
+    def opcoes_fatura_cartao(self, cartao_id, data_compra=None):
+        """Faturas candidatas (mês + vencimento) pra UI escolher ao lançar uma compra."""
+        return [
+            {"mes_fatura": o["mes_fatura"], "vencimento": o["vencimento"], "sugerido": o["sugerido"]}
+            for o in cartoes.opcoes_fatura(int(cartao_id), data_compra)
+        ]
+
     def registrar_compra_cartao(self, cartao_id, descricao, categoria_id, valor_total,
-                                parcelas_total, data_compra=None):
+                                parcelas_total, data_compra=None, mes_fatura=None):
         if not descricao or not descricao.strip():
             return {"ok": False, "erro": "Descreva a compra."}
         cents = _cents(valor_total)
         if cents <= 0:
             return {"ok": False, "erro": "Informe um valor maior que zero."}
         cat_id = int(categoria_id) if categoria_id else None
-        compra_id = cartoes.criar_compra(int(cartao_id), descricao, cat_id, cents, parcelas_total, data_compra)
+        compra_id = cartoes.criar_compra(int(cartao_id), descricao, cat_id, cents,
+                                          parcelas_total, data_compra, mes_fatura or None)
         if compra_id is None:
             return {"ok": False, "erro": "Cartão não encontrado."}
-        log.info("Compra #%s registrada no cartão #%s", compra_id, cartao_id)
+        log.info("Compra #%s registrada no cartão #%s (fatura=%s)", compra_id, cartao_id, mes_fatura)
         return {"ok": True, "id": compra_id}
 
     def listar_compras_cartao(self, cartao_id):
         return [
             {"id": c["id"], "descricao": c["descricao"], "valor_total": _reais(c["valor_total_cents"]),
              "parcelas_total": c["parcelas_total"], "categoria_id": c.get("categoria_id"),
+             "mes_fatura": c.get("mes_fatura"),
              "categoria_nome": c.get("categoria_nome") or "Sem categoria",
              "categoria_icone": c.get("categoria_icone") or "📦"}
             for c in cartoes.listar_compras(int(cartao_id))
         ]
 
-    def atualizar_compra_cartao(self, compra_id, descricao, categoria_id, valor_total, parcelas_total):
+    def atualizar_compra_cartao(self, compra_id, descricao, categoria_id, valor_total,
+                                parcelas_total, mes_fatura=None):
         compra_id = int(compra_id)
-        if cartoes.compra_tem_parcela_paga(compra_id):
+        if cartoes.compra_bloqueada_por_pagamento(compra_id):
             return {"ok": False, "erro":
-                     "Essa compra já tem parcela em fatura paga — não dá para corrigir. "
+                     "Essa compra está numa fatura que já recebeu pagamento — não dá para corrigir. "
                      "Se precisar, ajuste com um lançamento manual no Histórico."}
         if not descricao or not descricao.strip():
             return {"ok": False, "erro": "Descreva a compra."}
@@ -382,16 +392,16 @@ class Api:
         if cents <= 0:
             return {"ok": False, "erro": "Informe um valor maior que zero."}
         cat_id = int(categoria_id) if categoria_id else None
-        if not cartoes.atualizar_compra(compra_id, descricao, cat_id, cents, parcelas_total):
+        if not cartoes.atualizar_compra(compra_id, descricao, cat_id, cents, parcelas_total, mes_fatura or None):
             return {"ok": False, "erro": "Compra não encontrada."}
         log.info("Compra #%s do cartão corrigida pelo usuário", compra_id)
         return {"ok": True}
 
     def excluir_compra_cartao(self, compra_id):
         compra_id = int(compra_id)
-        if cartoes.compra_tem_parcela_paga(compra_id):
+        if cartoes.compra_bloqueada_por_pagamento(compra_id):
             return {"ok": False, "erro":
-                     "Essa compra já tem parcela em fatura paga — não dá para excluir. "
+                     "Essa compra está numa fatura que já recebeu pagamento — não dá para excluir. "
                      "Se precisar, ajuste com um lançamento manual no Histórico."}
         cartoes.excluir_compra(compra_id)
         return {"ok": True}
@@ -399,7 +409,9 @@ class Api:
     def fatura_cartao(self, cartao_id, mes=None):
         f = cartoes.fatura(int(cartao_id), mes)
         return {
-            "mes": f["mes"], "total": _reais(f["total_cents"]), "paga": f["paga"],
+            "mes": f["mes"], "total": _reais(f["total_cents"]),
+            "pago": _reais(f["pago_cents"]), "aberto": _reais(f["aberto_cents"]),
+            "paga": f["paga"],
             "parcelas": [
                 {"id": p["id"], "compra_id": p["compra_id"], "descricao": p["descricao"],
                  "numero": p["numero"],
@@ -410,12 +422,17 @@ class Api:
             ],
         }
 
-    def pagar_fatura_cartao(self, cartao_id, mes, conta_id):
-        r = cartoes.pagar_fatura(int(cartao_id), mes, int(conta_id))
+    def pagar_fatura_cartao(self, cartao_id, mes, conta_id, valor=None):
+        """valor=None quita a fatura inteira; um valor menor é pagamento parcial."""
+        cents = _cents(valor) if valor not in (None, "") else None
+        if cents is not None and cents <= 0:
+            return {"ok": False, "erro": "Informe um valor maior que zero."}
+        r = cartoes.pagar_fatura(int(cartao_id), mes, int(conta_id), cents)
         if r is None:
             return {"ok": False, "erro": "Não há fatura em aberto nesse mês."}
         log.info("Fatura do cartão #%s (%s) paga via conta #%s", cartao_id, mes, conta_id)
-        return {"ok": True, "total": _reais(r["total_cents"])}
+        return {"ok": True, "pago": _reais(r["valor_cents"]),
+                "aberto_restante": _reais(r["aberto_restante_cents"])}
 
     # -------------------- Investimentos --------------------
     def listar_investimentos(self):

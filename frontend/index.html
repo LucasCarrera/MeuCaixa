@@ -499,8 +499,10 @@
     </div>
     <div id="mcc-bloco-data">
       <label class="rotulo-campo">Data da compra</label>
-      <input id="mcc-data" type="date" class="entrada-texto">
+      <input id="mcc-data" type="date" class="entrada-texto" onchange="atualizarOpcoesFatura()">
     </div>
+    <label class="rotulo-campo">Vai cair na fatura de</label>
+    <select id="mcc-fatura" class="entrada-texto"></select>
     <button id="mcc-botao" class="btn-grande" onclick="confirmarCompraCartao()">Registrar compra</button>
   </div>
 </div>
@@ -512,6 +514,12 @@
     <input type="hidden" id="mpf-cartao-id">
     <input type="hidden" id="mpf-mes">
     <p class="sub" id="mpf-resumo"></p>
+    <label class="rotulo-campo">Quanto quer pagar?</label>
+    <div class="campo-moeda pequeno"><span>R$</span>
+      <input id="mpf-valor" type="text" inputmode="decimal" placeholder="0,00"></div>
+    <div style="display:flex; gap:8px; margin-top:6px">
+      <button class="link-simples" style="margin:0" onclick="preencherPagamentoTotal()">Pagar tudo</button>
+    </div>
     <label class="rotulo-campo">Pagar com qual conta?</label>
     <select id="mpf-conta" class="entrada-texto"></select>
     <button class="btn-grande" onclick="confirmarPagarFatura()">Confirmar pagamento</button>

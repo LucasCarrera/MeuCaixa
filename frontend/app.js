@@ -616,11 +616,17 @@ async function carregarCartoes() {
         <div class="lista-trans">${parcelasHtml}</div>
 
         <div class="cartao-rodape">
-          <b>Total da fatura: ${fmt(fat.total)}</b>
+          <div>
+            <b>Total da fatura: ${fmt(fat.total)}</b>
+            ${fat.pago > 0 && !fat.paga
+              ? `<div class="sub" style="font-size:12.5px">Pago ${fmt(fat.pago)} · em aberto ${fmt(fat.aberto)}</div>`
+              : ''}
+            ${fat.paga && fat.total > 0 ? '<div class="sub" style="font-size:12.5px;color:var(--green)">✅ Fatura quitada</div>' : ''}
+          </div>
           <div style="display:flex; gap:8px">
             <button class="btn-medio" style="margin:0" onclick="abrirModalCompraCartao(${c.id})">➕ Nova compra</button>
-            ${!fat.paga && fat.total > 0
-              ? `<button class="btn-medio" style="margin:0" onclick="abrirModalPagarFatura(${c.id}, '${mes}', ${fat.total})">Pagar fatura</button>`
+            ${!fat.paga && fat.aberto > 0
+              ? `<button class="btn-medio" style="margin:0" onclick="abrirModalPagarFatura(${c.id}, '${mes}', ${fat.aberto})">Pagar fatura</button>`
               : ''}
           </div>
         </div>
@@ -678,7 +684,26 @@ function _prepararModalCompra(cartaoId) {
   document.getElementById('modal-compra-cartao').classList.remove('escondido');
 }
 
-function abrirModalCompraCartao(cartaoId) {
+// preenche o select de fatura com base no cartão e na data da compra;
+// se `manter` for um mês, mantém ele selecionado (usado na correção)
+async function atualizarOpcoesFatura(manter) {
+  const cartaoId = document.getElementById('mcc-cartao-id').value;
+  const data = document.getElementById('mcc-data').value || hoje();
+  const ops = await api().opcoes_fatura_cartao(cartaoId, data);
+  const sel = document.getElementById('mcc-fatura');
+  sel.innerHTML = ops.map(o => {
+    const rotulo = formatarMes(o.mes_fatura) + ` (vence ${formatarData(o.vencimento)})` +
+      (o.sugerido ? ' — sugerida' : '');
+    return `<option value="${o.mes_fatura}">${rotulo}</option>`;
+  }).join('');
+  if (manter) sel.value = manter;
+  else {
+    const sugerida = ops.find(o => o.sugerido);
+    if (sugerida) sel.value = sugerida.mes_fatura;
+  }
+}
+
+async function abrirModalCompraCartao(cartaoId) {
   _prepararModalCompra(cartaoId);
   document.getElementById('mcc-titulo').textContent = 'Nova compra';
   document.getElementById('mcc-botao').textContent = 'Registrar compra';
@@ -688,6 +713,7 @@ function abrirModalCompraCartao(cartaoId) {
   document.getElementById('mcc-parcelas').value = 1;
   document.getElementById('mcc-bloco-data').style.display = '';
   document.getElementById('mcc-data').value = hoje();
+  await atualizarOpcoesFatura();
 }
 
 async function abrirModalEditarCompra(cartaoId, compraId) {
@@ -702,8 +728,9 @@ async function abrirModalEditarCompra(cartaoId, compraId) {
   document.getElementById('mcc-valor').value = compra.valor_total.toFixed(2).replace('.', ',');
   document.getElementById('mcc-parcelas').value = compra.parcelas_total;
   if (compra.categoria_id) document.getElementById('mcc-categoria').value = compra.categoria_id;
-  // a data não muda numa correção de valor: as parcelas seguem na mesma fatura
+  // na correção a data da compra não importa; deixamos o usuário escolher a fatura direto
   document.getElementById('mcc-bloco-data').style.display = 'none';
+  await atualizarOpcoesFatura(compra.mes_fatura);
 }
 function fecharModalCompraCartao() { document.getElementById('modal-compra-cartao').classList.add('escondido'); }
 
@@ -715,12 +742,13 @@ async function confirmarCompraCartao() {
   const valor = document.getElementById('mcc-valor').value;
   const parcelas = document.getElementById('mcc-parcelas').value || 1;
   const data = document.getElementById('mcc-data').value || hoje();
+  const fatura = document.getElementById('mcc-fatura').value;
   if (!descricao) return toast('Descreva a compra.');
   if (!valor) return toast('Informe o valor.');
 
   const r = compraId
-    ? await api().atualizar_compra_cartao(compraId, descricao, categoria, valor, parcelas)
-    : await api().registrar_compra_cartao(cartaoId, descricao, categoria, valor, parcelas, data);
+    ? await api().atualizar_compra_cartao(compraId, descricao, categoria, valor, parcelas, fatura)
+    : await api().registrar_compra_cartao(cartaoId, descricao, categoria, valor, parcelas, data, fatura);
   if (!r.ok) return toast(r.erro || 'Não deu para salvar.');
   fecharModalCompraCartao();
   toast(compraId ? '✅ Compra corrigida.' : '✅ Compra registrada.');
@@ -734,26 +762,38 @@ async function removerCompraCartao(compraId) {
   await carregarCartoes();
 }
 
-function abrirModalPagarFatura(cartaoId, mes, totalReais) {
+let faturaAbertoAtual = 0;
+
+function abrirModalPagarFatura(cartaoId, mes, abertoReais) {
+  faturaAbertoAtual = abertoReais;
   document.getElementById('mpf-cartao-id').value = cartaoId;
   document.getElementById('mpf-mes').value = mes;
   document.getElementById('mpf-resumo').textContent =
-    `Total da fatura de ${formatarMes(mes)}: ${fmt(totalReais)}`;
+    `Em aberto na fatura de ${formatarMes(mes)}: ${fmt(abertoReais)}. Pague tudo ou uma parte.`;
+  document.getElementById('mpf-valor').value = abertoReais.toFixed(2).replace('.', ',');
   document.getElementById('mpf-conta').innerHTML =
     contas.map(c => `<option value="${c.id}">${c.icone} ${c.nome}</option>`).join('');
   document.getElementById('modal-pagar-fatura').classList.remove('escondido');
 }
 function fecharModalPagarFatura() { document.getElementById('modal-pagar-fatura').classList.add('escondido'); }
 
+function preencherPagamentoTotal() {
+  document.getElementById('mpf-valor').value = faturaAbertoAtual.toFixed(2).replace('.', ',');
+}
+
 async function confirmarPagarFatura() {
   const cartaoId = document.getElementById('mpf-cartao-id').value;
   const mes = document.getElementById('mpf-mes').value;
   const conta = document.getElementById('mpf-conta').value;
+  const valor = document.getElementById('mpf-valor').value;
+  if (!valor) return toast('Informe quanto quer pagar.');
 
-  const r = await api().pagar_fatura_cartao(cartaoId, mes, conta);
+  const r = await api().pagar_fatura_cartao(cartaoId, mes, conta, valor);
   if (!r.ok) return toast(r.erro || 'Não deu para pagar a fatura.');
   fecharModalPagarFatura();
-  toast('✅ Fatura paga.');
+  toast(r.aberto_restante > 0
+    ? `✅ Pago ${fmt(r.pago)}. Ainda em aberto: ${fmt(r.aberto_restante)}.`
+    : '✅ Fatura quitada!');
   await carregarCartoes();
   await carregarContas();
   await recarregarTudo();

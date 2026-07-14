@@ -39,6 +39,36 @@ def data_vencimento_fatura(mes_fatura, dia_vencimento):
     return f"{_somar_mes(mes_fatura, 1)}-{int(dia_vencimento):02d}"
 
 
+def opcoes_fatura(cartao_id, data_compra=None, quantidade=15):
+    """Lista de faturas candidatas para o usuário escolher ao lançar uma compra.
+
+    Cada item traz o mês da fatura, seu vencimento e se é a sugestão automática
+    (a que o cálculo por data+fechamento indicaria). A UI pré-seleciona a sugerida.
+    """
+    conn = get_connection()
+    try:
+        cartao = conn.execute(
+            "SELECT dia_fechamento, dia_vencimento FROM cartoes WHERE id = ?", (cartao_id,)
+        ).fetchone()
+    finally:
+        conn.close()
+    if not cartao:
+        return []
+    data_compra = data_compra or date.today().strftime("%Y-%m-%d")
+    sugerido = _mes_fatura_inicial(data_compra, cartao["dia_fechamento"])
+    # começa a lista um mês antes da sugerida, pra permitir "jogar pra fatura atual"
+    inicio = _somar_mes(sugerido, -1)
+    opcoes = []
+    for i in range(quantidade):
+        mes = _somar_mes(inicio, i)
+        opcoes.append({
+            "mes_fatura": mes,
+            "vencimento": data_vencimento_fatura(mes, cartao["dia_vencimento"]),
+            "sugerido": mes == sugerido,
+        })
+    return opcoes
+
+
 # ----------------------------------------------------------------------------
 # Cartões
 # ----------------------------------------------------------------------------
@@ -47,10 +77,16 @@ def listar_cartoes():
     try:
         cartoes = [dict(r) for r in conn.execute("SELECT * FROM cartoes ORDER BY criado_em")]
         for c in cartoes:
-            usado = conn.execute(
-                "SELECT COALESCE(SUM(valor_cents),0) AS t FROM parcelas_cartao WHERE cartao_id=? AND paga=0",
+            # limite usado = tudo que já foi comprado - tudo que já foi pago (inclusive parcial)
+            comprado = conn.execute(
+                "SELECT COALESCE(SUM(valor_cents),0) AS t FROM parcelas_cartao WHERE cartao_id=?",
                 (c["id"],),
             ).fetchone()["t"]
+            pago = conn.execute(
+                "SELECT COALESCE(SUM(valor_cents),0) AS t FROM pagamentos_fatura WHERE cartao_id=?",
+                (c["id"],),
+            ).fetchone()["t"]
+            usado = comprado - pago
             c["limite_usado_cents"] = usado
             c["limite_disponivel_cents"] = c["limite_cents"] - usado
         return cartoes
@@ -134,7 +170,10 @@ def _gerar_parcelas(conn, compra_id, cartao_id, valor_total_cents, parcelas_tota
         )
 
 
-def criar_compra(cartao_id, descricao, categoria_id, valor_total_cents, parcelas_total, data_compra=None):
+def criar_compra(cartao_id, descricao, categoria_id, valor_total_cents, parcelas_total,
+                 data_compra=None, mes_fatura=None):
+    """Registra uma compra. Se mes_fatura for informado, a 1ª parcela cai nele;
+    senão, calcula pelo dia de fechamento a partir da data da compra."""
     data_compra = data_compra or date.today().strftime("%Y-%m-%d")
     parcelas_total = max(1, int(parcelas_total))
     valor_total_cents = int(valor_total_cents)
@@ -145,7 +184,7 @@ def criar_compra(cartao_id, descricao, categoria_id, valor_total_cents, parcelas
         ).fetchone()
         if not cartao:
             return None
-        mes_inicial = _mes_fatura_inicial(data_compra, cartao["dia_fechamento"])
+        mes_inicial = mes_fatura or _mes_fatura_inicial(data_compra, cartao["dia_fechamento"])
 
         cur = conn.execute(
             "INSERT INTO compras_cartao "
@@ -163,25 +202,32 @@ def criar_compra(cartao_id, descricao, categoria_id, valor_total_cents, parcelas
         conn.close()
 
 
-def compra_tem_parcela_paga(compra_id):
+def compra_bloqueada_por_pagamento(compra_id):
+    """True se alguma fatura que contém parcela desta compra já recebeu pagamento
+    (total ou parcial). Nesse caso a compra não pode mais ser editada/excluída,
+    para não bagunçar a contabilidade do que já saiu do caixa."""
     conn = get_connection()
     try:
         n = conn.execute(
-            "SELECT COUNT(*) AS n FROM parcelas_cartao WHERE compra_id = ? AND paga = 1",
-            (compra_id,),
+            "SELECT COUNT(*) AS n FROM pagamentos_fatura pf "
+            "WHERE pf.cartao_id = (SELECT cartao_id FROM compras_cartao WHERE id = ?) "
+            "AND pf.mes_fatura IN (SELECT mes_fatura FROM parcelas_cartao WHERE compra_id = ?)",
+            (compra_id, compra_id),
         ).fetchone()["n"]
         return n > 0
     finally:
         conn.close()
 
 
-def atualizar_compra(compra_id, descricao, categoria_id, valor_total_cents, parcelas_total):
+def atualizar_compra(compra_id, descricao, categoria_id, valor_total_cents, parcelas_total,
+                     mes_fatura=None):
     """Corrige uma compra lançada errada, regenerando as parcelas.
 
-    Só permitido enquanto NENHUMA parcela foi paga: depois que uma fatura é
-    paga, a transação real já saiu do caixa e alterar a compra deixaria a
-    contabilidade inconsistente. Mantém o mês da 1ª fatura original (a data
-    da compra não muda numa correção de valor).
+    Só permitido enquanto NENHUMA fatura da compra tem pagamento (ver
+    compra_bloqueada_por_pagamento): depois de pagar (total ou parcial), a
+    transação real já saiu do caixa e alterar a compra deixaria a
+    contabilidade inconsistente. Se mes_fatura for informado, move a compra
+    para essa fatura; senão mantém a fatura inicial original.
     """
     parcelas_total = max(1, int(parcelas_total))
     valor_total_cents = int(valor_total_cents)
@@ -192,7 +238,7 @@ def atualizar_compra(compra_id, descricao, categoria_id, valor_total_cents, parc
         ).fetchone()
         if not compra:
             return False
-        mes_inicial = conn.execute(
+        mes_inicial = mes_fatura or conn.execute(
             "SELECT MIN(mes_fatura) AS m FROM parcelas_cartao WHERE compra_id = ?", (compra_id,)
         ).fetchone()["m"]
         conn.execute(
@@ -204,7 +250,8 @@ def atualizar_compra(compra_id, descricao, categoria_id, valor_total_cents, parc
         _gerar_parcelas(conn, compra_id, compra["cartao_id"], valor_total_cents,
                         parcelas_total, mes_inicial)
         conn.commit()
-        log.info("Compra #%s corrigida: %s centavos em %sx", compra_id, valor_total_cents, parcelas_total)
+        log.info("Compra #%s corrigida: %s centavos em %sx (fatura %s)",
+                 compra_id, valor_total_cents, parcelas_total, mes_inicial)
         return True
     finally:
         conn.close()
@@ -224,7 +271,8 @@ def listar_compras(cartao_id, limite=30):
     conn = get_connection()
     try:
         rows = conn.execute(
-            "SELECT cc.*, c.nome AS categoria_nome, c.icone AS categoria_icone "
+            "SELECT cc.*, c.nome AS categoria_nome, c.icone AS categoria_icone, "
+            "(SELECT MIN(mes_fatura) FROM parcelas_cartao WHERE compra_id = cc.id) AS mes_fatura "
             "FROM compras_cartao cc LEFT JOIN categorias c ON c.id = cc.categoria_id "
             "WHERE cc.cartao_id = ? ORDER BY cc.criado_em DESC LIMIT ?",
             (cartao_id, limite),
@@ -252,8 +300,17 @@ def fatura(cartao_id, mes=None):
             (cartao_id, mes),
         ).fetchall()
         total = sum(r["valor_cents"] for r in rows)
-        paga = all(r["paga"] for r in rows) if rows else False
-        return {"mes": mes, "total_cents": total, "paga": paga, "parcelas": [dict(r) for r in rows]}
+        pago = conn.execute(
+            "SELECT COALESCE(SUM(valor_cents),0) AS t FROM pagamentos_fatura "
+            "WHERE cartao_id = ? AND mes_fatura = ?",
+            (cartao_id, mes),
+        ).fetchone()["t"]
+        aberto = max(0, total - pago)
+        paga = total > 0 and aberto == 0
+        return {
+            "mes": mes, "total_cents": total, "pago_cents": pago, "aberto_cents": aberto,
+            "paga": paga, "parcelas": [dict(r) for r in rows],
+        }
     finally:
         conn.close()
 
@@ -271,33 +328,61 @@ def proxima_fatura_em_aberto(cartao_id):
         conn.close()
 
 
-def pagar_fatura(cartao_id, mes, conta_id):
-    """Cria a transação real de saída (a fatura afetando o caixa) e marca as parcelas do mês como pagas."""
+def pagar_fatura(cartao_id, mes, conta_id, valor_cents=None):
+    """Paga a fatura, no todo ou em parte.
+
+    Cria a transação real de saída (afeta o caixa) pelo valor pago e registra
+    o pagamento. Se `valor_cents` for None ou >= o que está em aberto, quita a
+    fatura inteira; se for menor, é um pagamento parcial e o restante continua
+    em aberto na mesma fatura. Quando a fatura fica totalmente quitada, as
+    parcelas do mês são marcadas como pagas.
+    """
     conn = get_connection()
     try:
-        row = conn.execute(
-            "SELECT COALESCE(SUM(valor_cents),0) AS total FROM parcelas_cartao "
-            "WHERE cartao_id = ? AND mes_fatura = ? AND paga = 0",
+        total = conn.execute(
+            "SELECT COALESCE(SUM(valor_cents),0) AS t FROM parcelas_cartao "
+            "WHERE cartao_id = ? AND mes_fatura = ?",
             (cartao_id, mes),
-        ).fetchone()
-        total = row["total"]
-        if total <= 0:
+        ).fetchone()["t"]
+        ja_pago = conn.execute(
+            "SELECT COALESCE(SUM(valor_cents),0) AS t FROM pagamentos_fatura "
+            "WHERE cartao_id = ? AND mes_fatura = ?",
+            (cartao_id, mes),
+        ).fetchone()["t"]
+        aberto = total - ja_pago
+        if aberto <= 0:
             return None
+
+        valor = aberto if valor_cents is None else min(int(valor_cents), aberto)
+        if valor <= 0:
+            return None
+
         cartao = conn.execute("SELECT nome FROM cartoes WHERE id = ?", (cartao_id,)).fetchone()
+        parcial = valor < aberto
+        rotulo = "parcial " if parcial else ""
         cur = conn.execute(
             "INSERT INTO transacoes "
             "(data, descricao, valor_cents, tipo, categoria_id, conta_id, observacao, criado_em) "
             "VALUES (?,?,?,?,?,?,?,?)",
-            (date.today().strftime("%Y-%m-%d"), f"Fatura {cartao['nome']} ({mes})",
-             total, "saida", None, conta_id, "", agora()),
+            (date.today().strftime("%Y-%m-%d"),
+             f"Pagamento {rotulo}fatura {cartao['nome']} ({mes})",
+             valor, "saida", None, conta_id, "", agora()),
         )
         tid = cur.lastrowid
         conn.execute(
-            "UPDATE parcelas_cartao SET paga = 1 WHERE cartao_id = ? AND mes_fatura = ? AND paga = 0",
-            (cartao_id, mes),
+            "INSERT INTO pagamentos_fatura "
+            "(cartao_id, mes_fatura, valor_cents, conta_id, transacao_id, data, criado_em) "
+            "VALUES (?,?,?,?,?,?,?)",
+            (cartao_id, mes, valor, conta_id, tid, date.today().strftime("%Y-%m-%d"), agora()),
         )
+        if not parcial:
+            conn.execute(
+                "UPDATE parcelas_cartao SET paga = 1 WHERE cartao_id = ? AND mes_fatura = ?",
+                (cartao_id, mes),
+            )
         conn.commit()
-        log.info("Fatura do cartão #%s (%s) paga: transação #%s, %s centavos", cartao_id, mes, tid, total)
-        return {"transacao_id": tid, "total_cents": total}
+        log.info("Fatura do cartão #%s (%s) paga (%s%s centavos, transação #%s)",
+                 cartao_id, mes, "parcial " if parcial else "", valor, tid)
+        return {"transacao_id": tid, "valor_cents": valor, "aberto_restante_cents": aberto - valor}
     finally:
         conn.close()

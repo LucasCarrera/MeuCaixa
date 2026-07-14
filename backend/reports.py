@@ -9,6 +9,7 @@ from datetime import date, datetime
 
 from .db import BASE_DIR
 from . import repository as repo
+from . import cartoes
 
 REL_DIR = os.path.join(BASE_DIR, "data", "relatorios")
 
@@ -54,6 +55,44 @@ def _resolver_periodo(mes=None, data_inicio=None, data_fim=None):
         rotulo = _nome_mes(mes)
         sufixo = mes
     return resumo, transacoes, rotulo, sufixo
+
+
+def _meses_no_intervalo(mes_ini, mes_fim):
+    meses, atual = [], mes_ini
+    while atual <= mes_fim:
+        meses.append(atual)
+        ano, m = map(int, atual.split("-"))
+        m += 1
+        ano += (m - 1) // 12
+        m = (m - 1) % 12 + 1
+        atual = f"{ano:04d}-{m:02d}"
+    return meses
+
+
+def _faturas_cartoes(mes=None, data_inicio=None, data_fim=None):
+    """Faturas de cada cartão cujos meses caem no período do relatório.
+
+    Retorna lista de dicts com nome do cartão, mês, total/pago/aberto e a lista
+    de itens (compras) da fatura. Só inclui faturas que têm algum valor.
+    """
+    if data_inicio and data_fim:
+        meses = _meses_no_intervalo(data_inicio[:7], data_fim[:7])
+    else:
+        meses = [mes or date.today().strftime("%Y-%m")]
+
+    resultado = []
+    for c in cartoes.listar_cartoes():
+        for m in meses:
+            f = cartoes.fatura(c["id"], m)
+            if f["total_cents"] <= 0:
+                continue
+            resultado.append({
+                "cartao": c["nome"], "mes": m,
+                "total_cents": f["total_cents"], "pago_cents": f["pago_cents"],
+                "aberto_cents": f["aberto_cents"], "paga": f["paga"],
+                "itens": f["parcelas"],
+            })
+    return resultado
 
 
 # ----------------------------------------------------------------------------
@@ -153,6 +192,37 @@ def exportar_excel(mes=None, data_inicio=None, data_fim=None):
     larguras = [12, 32, 22, 10, 14, 28]
     for i, w in enumerate(larguras, start=1):
         ws2.column_dimensions[get_column_letter(i)].width = w
+
+    # --- Aba Cartões (faturas do período) ---
+    faturas = _faturas_cartoes(mes, data_inicio, data_fim)
+    if faturas:
+        ws3 = wb.create_sheet("Cartões")
+        cab = ["Cartão", "Fatura (mês)", "Descrição", "Categoria", "Valor (R$)"]
+        for i, h in enumerate(cab, start=1):
+            cel = ws3.cell(row=1, column=i, value=h)
+            cel.fill = cabec_fill
+            cel.font = cabec_font
+        linha = 2
+        for f in faturas:
+            for item in f["itens"]:
+                ws3.cell(row=linha, column=1, value=f["cartao"])
+                ws3.cell(row=linha, column=2, value=f["mes"])
+                parc = f" ({item['numero']}/{item['parcelas_total']})" if item["parcelas_total"] > 1 else ""
+                ws3.cell(row=linha, column=3, value=item["descricao"] + parc)
+                ws3.cell(row=linha, column=4, value=item.get("categoria_nome") or "—")
+                cel_val = ws3.cell(row=linha, column=5, value=_reais(item["valor_cents"]))
+                cel_val.number_format = 'R$ #,##0.00'
+                linha += 1
+            # linha de subtotal da fatura
+            ws3.cell(row=linha, column=3,
+                     value=f"Total {f['cartao']} · {f['mes']} — pago {_fmt(f['pago_cents'])}, em aberto").font = Font(bold=True)
+            cel_tot = ws3.cell(row=linha, column=5, value=_reais(f["aberto_cents"]))
+            cel_tot.number_format = 'R$ #,##0.00'
+            cel_tot.font = Font(bold=True)
+            linha += 2
+        larg3 = [22, 14, 34, 22, 14]
+        for i, w in enumerate(larg3, start=1):
+            ws3.column_dimensions[get_column_letter(i)].width = w
 
     caminho = os.path.join(REL_DIR, f"MeuCaixa_{sufixo}.xlsx")
     wb.save(caminho)
@@ -264,6 +334,38 @@ def exportar_pdf(mes=None, data_inicio=None, data_fim=None):
         el.append(tab)
     else:
         el.append(Paragraph("Nenhuma movimentação neste mês.", normal))
+
+    # cartões de crédito (faturas do período)
+    faturas = _faturas_cartoes(mes, data_inicio, data_fim)
+    if faturas:
+        el.append(Spacer(1, 0.7*cm))
+        el.append(Paragraph("Cartões de crédito", h2))
+        el.append(Spacer(1, 0.2*cm))
+        dados = [["Cartão", "Fatura", "Compra", "Valor"]]
+        for f in faturas:
+            for item in f["itens"]:
+                parc = f" ({item['numero']}/{item['parcelas_total']})" if item["parcelas_total"] > 1 else ""
+                dados.append([f["cartao"][:16], f["mes"], (item["descricao"] + parc)[:30],
+                              _fmt(item["valor_cents"])])
+            situacao = "quitada" if f["paga"] else f"em aberto {_fmt(f['aberto_cents'])}"
+            dados.append(["", "", f"Total {f['mes']} ({situacao})", _fmt(f["total_cents"])])
+        tab = Table(dados, colWidths=[3.5*cm, 2.2*cm, 7.3*cm, 3*cm])
+        estilo = [
+            ("BACKGROUND", (0, 0), (-1, 0), verde),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, -1), 9),
+            ("ALIGN", (3, 0), (3, -1), "RIGHT"),
+            ("TOPPADDING", (0, 0), (-1, -1), 5),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ]
+        # negrito nas linhas de subtotal (as que começam com "Total")
+        for i, linha in enumerate(dados):
+            if linha[2].startswith("Total"):
+                estilo.append(("FONTNAME", (0, i), (-1, i), "Helvetica-Bold"))
+                estilo.append(("LINEABOVE", (0, i), (-1, i), 0.5, cinza))
+        tab.setStyle(TableStyle(estilo))
+        el.append(tab)
 
     el.append(Spacer(1, 1*cm))
     el.append(Paragraph(

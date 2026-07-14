@@ -175,6 +175,20 @@ CREATE TABLE IF NOT EXISTS metas (
     criado_em         TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS pagamentos_fatura (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    cartao_id     INTEGER NOT NULL,
+    mes_fatura    TEXT NOT NULL,                    -- YYYY-MM
+    valor_cents   INTEGER NOT NULL,
+    conta_id      INTEGER,
+    transacao_id  INTEGER,
+    data          TEXT NOT NULL,
+    criado_em     TEXT NOT NULL,
+    FOREIGN KEY (cartao_id) REFERENCES cartoes(id) ON DELETE CASCADE,
+    FOREIGN KEY (conta_id) REFERENCES contas(id) ON DELETE SET NULL,
+    FOREIGN KEY (transacao_id) REFERENCES transacoes(id) ON DELETE SET NULL
+);
+
 CREATE TABLE IF NOT EXISTS orcamentos (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     categoria_id  INTEGER UNIQUE,                   -- NULL = orçamento geral do mês
@@ -215,6 +229,7 @@ CREATE INDEX IF NOT EXISTS idx_categorias_pai    ON categorias(categoria_pai_id)
 CREATE INDEX IF NOT EXISTS idx_parcelas_cartao   ON parcelas_cartao(cartao_id, mes_fatura);
 CREATE INDEX IF NOT EXISTS idx_parcelas_compra   ON parcelas_cartao(compra_id);
 CREATE INDEX IF NOT EXISTS idx_aportes_invest    ON aportes(investimento_id);
+CREATE INDEX IF NOT EXISTS idx_pag_fatura         ON pagamentos_fatura(cartao_id, mes_fatura);
 """
 
 CATEGORIAS_PADRAO = [

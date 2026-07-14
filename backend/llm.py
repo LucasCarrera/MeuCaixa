@@ -203,7 +203,15 @@ def _fmt(cents):
 
 
 def _contexto_financeiro():
-    """Monta um retrato compacto das finanças para o modelo responder com base em dados reais."""
+    """Monta um retrato compacto das finanças para o modelo responder com base em dados reais.
+
+    Inclui o resumo do mês, os cartões (fatura atual, limite) e a carteira de
+    investimentos, para o assistente conseguir responder sobre tudo isso.
+    """
+    from datetime import date
+    from . import cartoes
+    from . import investimentos
+
     resumo = repo.resumo_mes()
     linhas = [
         f"Mês de referência: {resumo['mes']}.",
@@ -216,6 +224,39 @@ def _contexto_financeiro():
         linhas.append("Onde mais gastou este mês:")
         for c in resumo["por_categoria"][:6]:
             linhas.append(f"  - {c['nome']}: {_fmt(c['total'])}")
+
+    # Cartões de crédito
+    mes_atual = date.today().strftime("%Y-%m")
+    lista_cartoes = cartoes.listar_cartoes()
+    if lista_cartoes:
+        linhas.append("Cartões de crédito:")
+        for c in lista_cartoes:
+            f = cartoes.fatura(c["id"], mes_atual)
+            partes = [
+                f"limite {_fmt(c['limite_cents'])}",
+                f"usado {_fmt(c['limite_usado_cents'])}",
+                f"disponível {_fmt(c['limite_disponivel_cents'])}",
+            ]
+            if f["total_cents"] > 0:
+                partes.append(f"fatura de {mes_atual}: {_fmt(f['total_cents'])} "
+                              f"(pago {_fmt(f['pago_cents'])}, em aberto {_fmt(f['aberto_cents'])})")
+            linhas.append(f"  - {c['nome']}: " + "; ".join(partes) + ".")
+
+    # Investimentos
+    carteira = investimentos.carteira()
+    if carteira["ativos"]:
+        linhas.append(
+            f"Investimentos: investido {_fmt(carteira['total_investido_cents'])}, "
+            f"valor de mercado {_fmt(carteira['total_mercado_cents'])}, "
+            f"rentabilidade {_fmt(carteira['rentabilidade_cents'])} "
+            f"({carteira['rentabilidade_pct']:.1f}%)."
+        )
+        for a in carteira["ativos"][:8]:
+            linhas.append(
+                f"  - {a['nome']} ({a['tipo']}): aplicado {_fmt(a['valor_investido_cents'])}, "
+                f"atual {_fmt(a['valor_mercado_cents'])}."
+            )
+
     return "\n".join(linhas)
 
 
@@ -230,6 +271,8 @@ def conversar(pergunta, modelo=None):
     system = (
         "Você é o assistente financeiro do app MeuCaixa. Fale português do Brasil, "
         "de forma simples, calorosa e curta, para uma pessoa que não entende de finanças. "
+        "Você tem acesso ao resumo do mês, aos cartões de crédito (limite e fatura) e "
+        "à carteira de investimentos do usuário — pode responder sobre qualquer um deles. "
         "Use só os dados fornecidos; se faltar informação, diga com honestidade. "
         "Nunca invente números. Você não é um consultor licenciado: para decisões grandes "
         "(investir, financiar), sugira procurar um profissional. Dê dicas práticas do dia a dia."
